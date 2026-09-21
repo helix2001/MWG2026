@@ -12,6 +12,10 @@ CANADA   = 2
 NEWYORK  = 3
 PORTUGAL = 4
 
+# default separation minima, in NM or minutes, depending on the context
+DEFAULT_LATERAL_SEP = 100
+DEFAULT_LONGITUDINAL_SEP = 15
+
 # for calculating seconds from midnight
 MIDNIGHT_STR = '1970-01-01 '
 MIDNIGHT = datetime.datetime(year = 1970, month = 1, day = 1, hour=0, minute = 0, second = 0, microsecond=0)

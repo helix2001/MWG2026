@@ -1,12 +1,12 @@
 import sys 
 import re
 from module import Vector3D
-from module.geo import mod
+from module.geo import heading_diff, mod
 from flight import Flight
 from module import ALT_THRESHOLD_1000
 import pickle
 
-from math import sin, cos, pi, sqrt
+from math import radians, sin, cos, pi, sqrt
 import numpy as np
 
 def try_float(a) -> float:
@@ -55,8 +55,9 @@ def calc_relative_speed(gs1:float = 0.0, h1:float = 0.0, vs1:float = 0.0, gs2:fl
     """
 
     # along v1 track vector
-    h2 = mod(h2 - h1, 360)
-    h1 = 0.0
+    heading_2 = radians(mod(h2 - h1, 360))
+    heading_1 = 0
+    h2 = heading_diff(h1, h2)
 
     # convert NM/H -> NM/min
     # gs1 = gs1/60
@@ -64,14 +65,14 @@ def calc_relative_speed(gs1:float = 0.0, h1:float = 0.0, vs1:float = 0.0, gs2:fl
     # convert deg -> radians
     # not needed, h1 is already 0.0
     # h1 = h1/180*pi
-    h2 = h2/180*pi
+    h2 = radians(h2)
     # convert NM/H -> NM/min
     # vs1 = vs1 / 60
     # vs2 = vs2 / 60
     
     # overkill to use numpy, but will use it anyway
-    r1_speed = np.array([(gs1)*cos(h1), (gs1)*sin(h1), vs1])
-    r2_speed = np.array([(gs2)*cos(h2), (gs2)*sin(h2), vs2])
+    r1_speed = np.array([(gs1)*cos(heading_1), (gs1)*sin(heading_1), vs1])
+    r2_speed = np.array([(gs2)*cos(heading_2), (gs2)*sin(heading_2), vs2])
     rel_speed = np.subtract(r1_speed, r2_speed)
     return Vector3D(rel_speed[0], rel_speed[1], rel_speed[2])
 

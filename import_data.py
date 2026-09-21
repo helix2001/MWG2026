@@ -5,12 +5,12 @@ from os import path
 import pickle
 from flight import Flight, get_sub_field
 from utils import save_flights, try_float, try_int, load_flights
-from module.geo import x_track_fix, mod
+from module.geo import xtrack_haversine, mod # x_track_fix, mod
 from mwg import *
 from datetime import datetime as dt
 from dateutil.parser import parse
 
-def import_flights(filename_csv: str = '', output_obj:str = "", output_res:str='', report_step = 10, filter = None, ANSP = None):
+def import_flights(filename_csv: str = '', output_obj:str = "", output_res:str='', report_step = 10, interpolate : bool = True, filter = None, ANSP = None):
     
     """
     Import flights from data files, create the flight's list
@@ -64,7 +64,7 @@ def import_flights(filename_csv: str = '', output_obj:str = "", output_res:str='
         flights = {}
  
         # read flight list
-        with open(filename_csv, 'r') as file:
+        with open(filename_csv, 'r',encoding="utf-8-sig", errors="replace") as file:
             # read the CSV list into a dictionary
             reader = DictReader(file, delimiter=",")
             # print(dict(list(flights_reader)[0]).keys())
@@ -154,7 +154,7 @@ def import_flights(filename_csv: str = '', output_obj:str = "", output_res:str='
                             flight.sort_profile()
                         
                         except Exception as e:
-                            print(f'{callsign} has no fight profile, or flight profile is inconsistent,   ', e)
+                            print(f'\n{callsign} has no fight profile, or flight profile is inconsistent,   ', e)
                        
                     # Add the callsign if it was missed on a previous report, the correlation is established by flight_id
                     if flight.callsign == "" and callsign != "":
@@ -179,11 +179,13 @@ def import_flights(filename_csv: str = '', output_obj:str = "", output_res:str='
                 """
 
                 # position report data
-                lt = line['lat']
-                try: lat = float(lt) # * (-1 if ANSP == 4 else 1) 
-                except: lat = None
+                lt = line['lat'].replace(',','.')
+                try: 
+                    lat = float(lt) # * (-1 if ANSP == 4 else 1) 
+                except:
+                    lat = None
 
-                lg = line['lon']
+                lg = line['lon'].replace(',','.')
                 try:
                     lon = float(lg) 
                 except:
@@ -225,15 +227,18 @@ def import_flights(filename_csv: str = '', output_obj:str = "", output_res:str='
                 # add report data to the flight, if the report data is valid
                 # needs to have a latitude, longitude, flight level and timestamp
                 if lat is not None and lon is not None and fl is not None and timestamp is not None:
+
+                    # check if it faster with hashing
                     resume = (timestamp, lat, lon, f)
-                    # check if the report is a duplicate
+
+                    # check if the report is a duplicate, if so ignores it.
                     if resume not in flight.duplicates:
                         # assume default value None for CTE
                         cte = None
 
                         # assume default values por projected latitude and longitude
-                        proj_lat = None
-                        proj_lon = None
+                        # proj_lat = None
+                        # proj_lon = None
 
                         # get flight profile
                         profile = flight.profile
@@ -249,14 +254,16 @@ def import_flights(filename_csv: str = '', output_obj:str = "", output_res:str='
                                     # determine the flight segment that might pertain to this flight
                                     if timestamp_bin >= p1.timestamp_bin and timestamp_bin< p2.timestamp_bin:
                                         # calculate the CTE for this position report
-                                        xdist, proj_lat, proj_lon, adist = x_track_fix(p1.lat, p1.long, p2.lat, p2.long, lat, lon)
+                                        # xdist, proj_lat, proj_lon, adist = x_track_fix(p1.lat, p1.long, p2.lat, p2.long, lat, lon)
+                                        xtrackdistance, proj_lat, proj_lon, along_distance = xtrack_haversine(p1.lat, p1.long, p2.lat, p2.long, lat, lon)
                                         # calculate the slop value in NM
-                                        cte = round(xdist / 1852, ndigits=3)
-                                        break                     
+                                        cte = round(xtrackdistance / 1852, ndigits=3)
+                                        break
+                    
 
                         # creates the report
                         report = Report({LAT: lat, LONG: lon, FL: fl, TIMESTAMP: timestamp, SECONDS: 0, GT: bearing, GS:ground_speed,
-                                    SIC:sic, SAC:sac, CODE: addr, CTE:cte, PROJ_LAT:proj_lat, PROJ_LON:proj_lon})
+                                    SIC:sic, SAC:sac, CODE: addr, CTE:cte, PROJ_LAT:None, PROJ_LON:None})
                         # flight.add_surv_rep(line)
                         flight.surveillance.append(report)
                         flight.set_duplicate(resume)
@@ -275,16 +282,17 @@ def import_flights(filename_csv: str = '', output_obj:str = "", output_res:str='
         
         for id in flights:
             flight : Flight = flights[id]
+            # TODO calculate the CTE here, after sorting the flight profile and reports
             
             # clears the flight's duplicates list
             flight.duplicates = {}
             flight.sort_reports()
             flight.set_min_max_fl()
             
-            
-            # reduces the number of reports to interpolate from
-            flight.decimate_surveillance(step = report_step)            
-            flight.interpolate_all()
+            if interpolate:
+                # reduces the number of reports to interpolate from
+                flight.decimate_surveillance(step = report_step)            
+                flight.interpolate_all()
 
             print ('\r',flight.callsign, " ",c,"/",max, end='  ')
 
@@ -339,9 +347,13 @@ def process_flights(flights: dict, start: int = 0, finish: int = 2147483647):
 
     # m = list(map(lambda f:list(f.interpolated.keys()), fl))
     
-
-    start_second  = min(list(map(lambda f: min(list(f.interpolated.keys())), usable)))
-    finish_second = max(list(map(lambda f: min(list(f.interpolated.keys())), usable)))
+    try:
+        start_second  = min(list(map(lambda f: min(list(f.interpolated.keys())), usable)))
+        finish_second = max(list(map(lambda f: min(list(f.interpolated.keys())), usable)))
+    
+    except:
+        start_second = 0
+        finish_second = 0
 
     print(start_second, finish_second)
 

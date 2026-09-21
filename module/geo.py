@@ -1,24 +1,31 @@
 from math import radians, acos, asin, sin, cos, sqrt, pi, degrees, atan2, floor, trunc, pow, atan
 from string import digits
+import sys
 from geographiclib.geodesic import Geodesic
 import numpy as np
+
+EPS = sys.float_info.epsilon
 
 # spherical Earth
 SPHERICAL_RADIUS = 180 * 60 / pi * 1852
 
 # WGS84 semimajor axis 
 A = 6378137.0
-# WGS84 mean radius
-mA = 6371008.0
+
+# WGS84 semiminor axis;
+B = 6356752.3142
+
+# WGS84 mean radius, calculated as the radius of a sphere with the same surface area as the ellipsoid
+MEAN_RADIUS = 6372008.8
+
+# mean earth radius between 0º lat and 50º lat
+MEAN_RADIUS_0_50 = 6377890.41
 
 # flattening
 F = 1/298.257223563
 
 # inverse flattening
-IF = 298.257223563
-
-# WGS84 semiminor axis;
-B = 6356752.3142;                     
+IF = 298.257223563                     
 
 # square of WGS84 1st eccentricity
 # E_SQR = 1 - (B/A)^2
@@ -26,11 +33,6 @@ E_SQR : float = 0.00669437999014
 
 # square of WGS84 2nd eccentricity
 E2_SQR : float = 6.73949674228E-3
-
-
-MEAN_RADIUS = 6372008.8
-# mean earth radius between 0º lat and 50º lat
-MEAN_RADIUS_0_50 = 63778904.0534;       
 
 # traffic type
 # SAMEDIR = "SAMEDIR"
@@ -46,26 +48,85 @@ convert distances from meters to nautical miles
 m2NM = 1852
 
 # error
-ERROR_LATLONG = 1000.0
+ERROR_LATLONG = None
 
 # N, E - positive values
 # S, W - negative values
 
 # floating point modulus
+# see if this is implemented in some low level C/C++ library
 def mod(y: float, x: float) -> float:
     return y - x * floor(y / x)
 
 # calculates the smallest angle between to bearings
+# used to determine if two flights are same or opposite direction
+# já está otimizada
+
 def heading_diff(h1:float, h2:float)->float:
-    h1=h1 * DEGTORAD
-    h2=h2 * DEGTORAD
-    
-    angle = acos(round( cos (h1) * cos(h2) +sin(h1) * sin(h2),5) ) * RADTODEG
-    return round(angle,3)
+    h1 = h1 * DEGTORAD
+    h2 = h2 * DEGTORAD    
+    return round(acos(round( cos (h1) * cos(h2) +sin(h1) * sin(h2),5) ) * RADTODEG, 3)    
+
+# given lat/lon, bearing and distance, determine the point lat/lon 
+def direct_haversine(lat1:float, lon1:float, bearing:float, distance:float) -> tuple[float|None,float|None, float|None]:
+    """
+    calculates the destination lat,lon, given the initial lat, lon , ground track and distance (meters)
+    returns the latitude and longitude of the destination point, or None, None if any error occured
+    and the bearing at the destination point.
+    """
+    try:
+        # calculate the destination point, considering the earth as a sphere
+        lat1, lon1, bearing, distance = map(lambda a : a * DEGTORAD,[lat1, -lon1, bearing, distance/1852/60])
+        lat = asin(sin(lat1)*cos(distance)+cos(lat1)*sin(distance)*cos(bearing))
+        dlon = atan2(sin(bearing)*sin(distance)*cos(lat1),cos(distance)-sin(lat1)*sin(lat))
+        lon = mod(lon1-dlon +pi, 2*pi )-pi
+        
+        # calculate the reverse bearing, used to determine if a flight is crossing or reciprocal
+        dlon = -lon1 + lon
+        dlat = lat1 - lat
+        # a = sin(dlat/2)**2 + cos(lat)*cos(lat1)*sin(dlon/2)**2
+              
+        final_bearing = mod(atan2(sin(dlon)*cos(lat1),cos(lat)*sin(lat1)-sin(lat)*cos(lat1)*cos(dlon)) + pi, 2 * pi)
+
+        # calculate the results in degrees
+        lat, lon, final_bearing = map(lambda a : a * RADTODEG,[lat,-lon,final_bearing])
+        # final_bearing = round(mod (final_bearing, 360), 3)
+
+    except Exception as e:
+        print(e)
+        lat = None
+        lon = None
+        final_bearing = None
+
+    return lat, lon, final_bearing
+
+def inverse_haversine(lat1:float, lon1:float, lat2:float, lon2:float) -> tuple[float|None,float|None, float|None]:
+    """
+    calculates the distance and bearing from P1 to P2, given the latitudes and longitudes of both points
+    returns the distance in meters and the initial bearing in degrees, or None if any error occured
+    """
+    try:
+        lat1, lon1, lat2, lon2 = map(lambda a : a * DEGTORAD,[lat1, -lon1, lat2, -lon2])
+        dlon = lon2 - lon1
+        dlat = lat2 - lat1
+        a = sin(dlat/2)**2 + cos(lat1)*cos(lat2)*sin(dlon/2)**2
+        c = 2 * asin(sqrt(a))
+        distance = c * MEAN_RADIUS        
+        bearing = mod(atan2(sin(-dlon)*cos(lat2),cos(lat1)*sin(lat2)-sin(lat1)*cos(lat2)*cos(-dlon)) * RADTODEG, 360)
+        bearing_reverse = mod(atan2(sin(dlon)*cos(lat1),cos(lat2)*sin(lat1)-sin(lat2)*cos(lat1)*cos(dlon)) * RADTODEG, 360)
+
+    except Exception as e:
+        print(e)
+        distance = None
+        bearing = None
+        bearing_reverse = None
+
+    return distance, bearing, bearing_reverse
 
 # calculates the initial bearing from P1 to P2, in radians
 # if parameter convert is true, converts from degrees to radians
-def bearing(lat1: float, lon1: float, lat2: float, lon2: float, convert: bool = True) -> float:
+
+def bearing_haversine(lat1: float, lon1: float, lat2: float, lon2: float, convert: bool = True) -> float:
     if lat1 == 90.0:
         # initial bearing from North Pole is always 180
         b = pi
@@ -76,45 +137,32 @@ def bearing(lat1: float, lon1: float, lat2: float, lon2: float, convert: bool = 
         # calculate initial bearing from p1 to p2, considering the earth as a sphere
         if convert:
             lat1, lon1, lat2, lon2 = map(radians, [lat1, lon1, lat2, lon2])
+
         b = mod(atan2(sin(lon2 - lon1) * cos(lat2), cos(lat1) * sin(lat2) - sin(lat1) * cos(lat2) * cos(lon2 - lon1)),
                 2 * pi)
-    # returns initial bearing from (lat1,long2) to (lat2,long2), in radians
-    return b
+    # returns initial bearing from (lat1,lon1) to (lat2,lon2), in degrees
+    return b * RADTODEG
 
-
-def distance(lat1: float, lon1: float, lat2: float, lon2: float, convert: bool = True) -> float:
+def distance_haversine(lat1: float, lon1: float, lat2: float, lon2: float, radius: float = MEAN_RADIUS) -> float:
     """
-    Calculates the distance from P1 to P2, in radians.
-    Uses Haversine formula for spherical earth
-    If parameter convert is true, converts from degrees to radians
-    """
-    # convert lat and long from decimal degrees to radians
-    if convert:
-        lat1, lon1, lat2, lon2 = map(radians, [lat1, lon1, lat2, lon2])
-    
-    # calculate the distance using the haversine formula, returns result in radians
-    return 2 * asin(sqrt(sin((lat2 - lat1) / 2) ** 2 + cos(lat1) * cos(lat2) * sin((lon2 - lon1) / 2) ** 2))
-
-
-def distance_bearing(lat1: float, lon1: float, lat2: float, lon2: float) -> tuple[float, float]:
-    """
-    Calculates the distance and bearing from point1 to point2
+    Calculate the great-circle distance between two points using the Haversine formula.
 
     Args:
-        lat1: point 1 latitude
-        lon1: point 1 longitude
-        lat2: point 2 latitude
-        lon2: point 2 longitude
-    
-    Returns:
-        The distance (meters) and bearing (degrees) from P1 to P2
-    """
-    lat1, lon1, lat2, lon2 = map(radians, [lat1, lon1, lat2, lon2])
-    distance_p1_p2 = distance(lat1, lon1, lat2, lon2, False) * MEAN_RADIUS
-    initial_bearing = degrees(bearing(lat1, lon1, lat2, lon2, False))
-    # returns distance in meters, bearing in degrees
-    return distance_p1_p2, initial_bearing
+        lat1, lon1: Latitude/longitude of the first point in decimal degrees.
+        lat2, lon2: Latitude/longitude of the second point in decimal degrees.
+        radius: Sphere radius in meters (defaults to WGS84 mean Earth radius).
 
+    Returns:
+        Distance in meters.
+    """
+
+    lat1_rad, lon1_rad, lat2_rad, lon2_rad = map(radians, [lat1, lon1, lat2, lon2])
+    dlat = lat2_rad - lat1_rad
+    dlon = lon2_rad - lon1_rad
+
+    a = sin(dlat / 2.0) ** 2 + cos(lat1_rad) * cos(lat2_rad) * sin(dlon / 2.0) ** 2
+    c = 2.0 * atan2(sqrt(a), sqrt(1.0 - a))
+    return radius * c
 
 def str_to_latlong(point: str) -> tuple[float, float]:
     # allowed format
@@ -205,15 +253,13 @@ def str_to_latlong(point: str) -> tuple[float, float]:
 
 
 def degree_to_dms(n: float) -> tuple[int, int, int, int]:
+    
     """
     Returns the representation of a float in deg, min, sec
         Args: number to convert
         Returns: degrees, minutes, seconds, sign of the value
     """
-    if n < 0.0:
-        sign = -1
-    else:
-        sign = 1
+    sign = -1 if n<0.0 else 1    
     n = abs(n)
     d = trunc(n)
     n = (n - d) * 60
@@ -226,7 +272,7 @@ def degree_to_dms(n: float) -> tuple[int, int, int, int]:
     if m > 59:
         m = 0
         d += 1
-    return d, m, s, sign
+    return d, m, s, sign 
 
 def degree_to_dms_dec(n: float) -> tuple[int, int, float, int]:
     """
@@ -243,7 +289,7 @@ def degree_to_dms_dec(n: float) -> tuple[int, int, float, int]:
     n = (n - d) * 60
     m = trunc(n)
     s = (n - m) * 60
-    #s = round(n)
+    # s = round(n)
     # if s == 60:
       #  s = 0
        # m += 1
@@ -252,23 +298,22 @@ def degree_to_dms_dec(n: float) -> tuple[int, int, float, int]:
        #  d += 1
     return d, m, s, signal
 
-# convert a pair lat, long to a string, formatted as  "DDMMSS(N|S)DDDMMSS(W|E)"
-def latlong_to_str(lat: float, lon: float) -> str:
+# convert a pair lat, lon to a string, formatted as  "DDMMSS.CC(N|S)DDDMMSS.CC(W|E)"
+def latlong_to_str_dec(lat: float, lon: float) -> str:
     # make sure the values are within limits
     if lat is None or lon is None or lat > 90.0 or lat < -90.0 or lon > 180.0 or lon < -180.0:
         return None
 
     chars = [["", "N", "S"], ["", "E", "W"]]
 
-    lat_deg, lat_min, lat_sec, sign_lat = degree_to_dms(lat)
-    lon_deg, lon_min, lon_sec, sign_lon = degree_to_dms(lon)
+    lat_deg, lat_min, lat_sec, sign_lat = degree_to_dms_dec(lat)
+    lon_deg, lon_min, lon_sec, sign_lon = degree_to_dms_dec(lon)
 
     lat_char = chars[0][sign_lat]
     lon_char = chars[1][sign_lon]
 
-    return "{:0>2}{:0>2}{:0>2}{}{:0>3}{:0>2}{:0>2}{}".\
+    return "{:0>2}{:0>2}{:05.2f}{}{:0>3}{:0>2}{:05.2f}{}".\
         format(lat_deg, lat_min, lat_sec, lat_char, lon_deg, lon_min, lon_sec, lon_char)
-
 
 # The results from following functions where verified comparing
 # results with NOAA tools available at https://geodesy.noaa.gov/NCAT/
@@ -330,7 +375,7 @@ def xyz_latlong (x:float, y:float, z : float) -> tuple [float, float,float]:
 
     return round(degrees(lat),10) , round(degrees(long),10), round(h,3)
 
-
+# check if a point is on a great circle
 def point_on_gc(lat1:float,long1:float,lat2:float,long2:float, latx:float, longx:float) -> bool:
     result =  False
     if long1 == long2 and long1 == longx:
@@ -338,7 +383,7 @@ def point_on_gc(lat1:float,long1:float,lat2:float,long2:float, latx:float, longx
     elif  long1 == long2 and long1 != longx:
         result =False
     else:
-        lat1, long1, lat2, long2, latx, longx = map(radians,[lat1,long1,lat2,long2,latx,longx])
+        lat1, long1, lat2, long2, latx, longx = map(lambda a : a * DEGTORAD,[lat1,long1,lat2,long2,latx,longx])
         newlat : float = atan((sin(lat1)*cos(lat2)*sin(longx-long2)-sin(lat2)*cos(lat1)*sin(longx-long1))\
             /(cos(lat1) * cos(lat2) * sin(long1 - long2)))
 
@@ -350,48 +395,50 @@ def point_on_gc(lat1:float,long1:float,lat2:float,long2:float, latx:float, longx
     return result
 
 
-def x_track_fix(lat_1 :float, long_1 : float ,lat_2 : float, long_2:float, latx : float,longx :float) -> tuple[float,float, float, float]:
+def xtrack_haversine(lat_1 :float, long_1 : float ,lat_2 : float, long_2:float, lat_x : float,long_x :float, convert:bool = False) -> tuple[float,float, float, float]:
     """ 
     Calculates the perpendicular distance from px->(latx,longx) to the great circle
     defined by P1 -> (lat1,long1) to P2 -> (lat2, long2) and the projected fix on the GC
-
     Using a spherical earth model, not WGS84.
-    Distances and angles calculated using GeographicLib, WGS84
-
     Taken from https://edwilliams.org,
     """
-    # distance, lat_px, long_px
-    result = 0.0, 0.0, 0.0, 0.0
+    # xdistance, lat_px, long_px, alongdistance
+    result = None
 
     # if the points are the same or too close, calculate the distance from
-    # P1 to PX
-    if lat_1 == lat_2 and long_1 == long_2:
-        result = Geodesic.WGS84.Inverse(lat1 = lat_1, lon1 = long_1, lat2 = latx, lon2 = longx)["s12"], lat_1, long_1, 0.0
-    elif (lat_1 == latx and long_1 == longx):
+    # P1 to PX, Check last result
+
+    if (lat_1 == lat_x and long_1 == long_x):
         result = 0.0, lat_1, long_1, 0.0
-    elif (lat_2 == latx and long_2 == longx):
+    elif (lat_2 == lat_x and long_2 == long_x):
         result = 0.0, lat_2, long_2, 0.0
-    else:
-        calc1x = Geodesic.WGS84.Inverse(lat_1, long_1, latx, longx)
-        b1x = mod(calc1x["azi1"],360) 
-        d1x = calc1x["s12"]/A
+    else:   
+        lat1, lon1, lat2, lon2, latx, lonx = map(lambda a : a * DEGTORAD,[lat_1,long_1,lat_2,long_2,lat_x,long_x])
+        d1x = 2*asin(sqrt((sin((lat1-latx)/2))**2 + cos(lat1)*cos(latx)*(sin((lon1-lonx)/2))**2))
+    
+        if abs(lat_1-lat_2)<= EPS and abs(long_1-long_2)<= EPS:
+            result = d1x * MEAN_RADIUS, lat_1, long_1, 0.0
+        else:
+            b1x = atan2(sin(lonx - lon1) * cos(latx), cos(lat1) * sin(latx) - sin(lat1) * cos(latx) * cos(lonx - lon1))
         
-        calc12 = Geodesic.WGS84.Inverse(lat_1,long_1,lat_2,long_2)
-        d12 = calc12["s12"]
-        b12 = mod(calc12["azi1"],360)
-        
-        # get reverse initial bearing
-        b21 = mod(calc12["azi1"] + 180.0,360)
-        # get cross track distance        
-        xdist : float = asin(sin(d1x) * sin (radians(b1x-b12)))
-        # get across track distance
-        adist : float = acos(cos(d1x)/cos(xdist))*A
-        # check if the cross track point is ahead or behind P1
-        azimuth = b21 if heading_diff(b1x, b12) > 90 else b12
-        # calculate the lat,long of the projected point
-        calc = Geodesic.WGS84.Direct(lat1 = lat_1, lon1 = long_1, azi1 = azimuth, s12 = adist)
-        # distance positive, right of track, negative, left of track
-        result = xdist * mA, calc["lat2"], calc["lon2"], adist
+            b12 = atan2(sin(lon2 - lon1) * cos(lat2), cos(lat1) * sin(lat2) - sin(lat1) * cos(lat2) * cos(lon2 - lon1))
+            b21 = mod(atan2(sin(lon1 - lon2) * cos(lat1), cos(lat2) * sin(lat1) - sin(lat2) * cos(lat1) * cos(lon1 - lon2)),2*pi)
+
+            # get cross track distance        
+            xdist = asin(sin(d1x) * sin (b1x-b12))
+            # get along track distance
+            adist = asin(sqrt( (sin(d1x))**2 - (sin(xdist))**2 )/cos(xdist))
+       
+            # check if the cross track point is ahead or behind P1
+            bearing = b12 if b1x >= 0.0 else mod(b12, 2*pi)       
+            
+            # calculate the destination point, considering the earth as a sphere
+            lat = asin(sin(lat1)*cos(adist)+cos(lat1)*sin(adist)*cos(bearing))
+            dlon = atan2(sin(bearing)*sin(adist)*cos(lat1),cos(adist)-sin(lat1)*sin(lat))
+            lon = mod(lon1-dlon +pi, 2*pi )-pi
+                   
+            # distance positive, right of track, negative, left of track
+            result = xdist * MEAN_RADIUS, lat * RADTODEG, lon * RADTODEG, adist * MEAN_RADIUS
     
     return result
 
@@ -416,7 +463,7 @@ def is_fix_inside(lat:float, long:float, fix_list:list) -> bool:
         # iterate throught all segments
         for i in range(0,len(temp)-1):
             # calculates the distance from the fix to the segment
-            r = x_track_fix(lat_1 = temp[i][0], long_1 = temp[i][1], lat_2 = temp[i+1][0], long_2 = temp[i+1][1], latx=lat, longx=long)
+            r = xtrack_haversine(lat_1 = temp[i][0], long_1 = temp[i][1], lat_2 = temp[i+1][0], long_2 = temp[i+1][1], lat_x=lat, long_x=long)
             # if the distance is negative, the fix to the left of the segment,
             # putting it oustide of the polygon
             if r[0]<0.0 :
@@ -426,7 +473,7 @@ def is_fix_inside(lat:float, long:float, fix_list:list) -> bool:
     # returns the result    
     return result
 
-def get_bounding_box(p:list, lateral:int = 50, time : int = -15, dist : int = None, behind:int = 0) -> list:
+def get_bounding_box(p:list, lateral : int = 100, time : int = -15, dist : int = None, behind : int = 0) -> list:
     """
     Calculate the bounding box for an aircraft
     Args:
@@ -437,11 +484,22 @@ def get_bounding_box(p:list, lateral:int = 50, time : int = -15, dist : int = No
     Returns:
         Tuple containing 4 points, representing the lb, lt, rt, rb points of the bounding box
     """
+
+    # the list in p contains the following information:
+    # 0 - latitude
+    # 1 - longitude     
+    # 2 - altitude
+    # 3 - heading
+    # 4 - speed in knots
+    
     lat = p[0]
     long = p[1]
-    azimuth = p[3]
+    initial_bearing = p[3]
+    
     # convert speed from knots to m/s
-    speed = p[4]/60 * 1852 
+    speed = p[4] / 60 * 1852 
+    
+    #calculate the lateral distance in meters
     distance_lateral = lateral * 1852
 
     # if behind is negative means time.
@@ -450,15 +508,15 @@ def get_bounding_box(p:list, lateral:int = 50, time : int = -15, dist : int = No
 
     # calculate the point behind, if needed
     if distance_behind > 0 :
-        calc0 = Geodesic.WGS84.Direct(lat1=lat, lon1 = long, azi1 = azimuth + 180, s12 = distance_behind)
+        calc0 = Geodesic.WGS84.Direct(lat1=lat, lon1 = long, azi1 = initial_bearing + 180, s12 = distance_behind)
         # get point behind the flight
         lat_b = calc0["lat2"]
         long_b = calc0["lon2"]
-        azi_b = mod(calc0["azi2"]+180.0,360.0)
+        azi_b = mod(calc0["azi2"]+180.0, 360.0)
     else:
         lat_b = lat
         long_b = long
-        azi_b = azimuth
+        azi_b = initial_bearing
 
     # calculate bottom left corner
     calc1 = Geodesic.WGS84.Direct(lat1=lat_b, lon1 = long_b, azi1 = azi_b - 90, s12 = distance_lateral )
@@ -466,9 +524,9 @@ def get_bounding_box(p:list, lateral:int = 50, time : int = -15, dist : int = No
     calc4 = Geodesic.WGS84.Direct(lat1=lat_b, lon1 = long_b, azi1 = azi_b + 90, s12 = distance_lateral )
 
     # calculate 
-    distance_long = abs(time) * speed if dist == None else dist * 1852
+    distance_ahead = abs(time) * speed if dist == None else dist * 1852
 
-    calc_next = Geodesic.WGS84.Direct(lat1=lat, lon1 = long, azi1 = azimuth, s12 = distance_long )
+    calc_next = Geodesic.WGS84.Direct(lat1=lat, lon1 = long, azi1 = initial_bearing, s12 = distance_ahead )
     # get coordinates of the calculated point
     next_lat = calc_next["lat2"]
     next_long = calc_next["lon2"]
@@ -484,11 +542,72 @@ def get_bounding_box(p:list, lateral:int = 50, time : int = -15, dist : int = No
 
     return result    
 
-def test():
-    fixes = [(39,-20),(41,-20),(40,-15),(39,-15),(39,-20.0)]
-    print (is_fix_inside(43,-18,fixes))
-    print (is_fix_inside(39.5,-18,fixes))
-    print (is_fix_inside(39.5,-18,fixes))
+def get_bounding_box_haversine(p:list, lateral : int = 100, time_ahead : int = 15, dist : int = None, time_behind : int = 0) -> list:
+    """
+    Calculate the bounding box for an aircraft
+    Args:
+        p: Tuple containing the position information
+        lateral: lateral separation to apply, in NM, default 100
+        distance: longitudinal distance ahead to apply, in NM
+        time_ahead: longitudinal time ahead to apply in minutes, default 15
+        time_behind: longitudinal time behind to apply in minutes, default 0
+
+    Returns:
+        Tuple containing 4 points, representing the lb, lt, rt, rb points of the bounding box
+    """
+
+    # the list in p contains the following information:
+    # 0 - latitude
+    # 1 - longitude     
+    # 2 - altitude
+    # 3 - heading
+    # 4 - speed in knots
+    
+    lat = p[0]
+    long = p[1]
+    initial_bearing = p[3]
+    
+    # convert speed from knots to meters per minute
+    speed = p[4] / 60 * 1852 
+    
+    #calculate the lateral distance in meters
+    distance_lateral = lateral * 1852
+
+    # calculate distance ahead from time_ahead and speed
+    distance_ahead = abs(time_ahead) * speed
+    
+    # calculate distance behind from time_behind and speed
+    distance_behind = abs(time_behind) * speed
+        
+    # calculate the point behind, if needed
+    if distance_behind > 0.0:
+        latb, longb, azib = direct_haversine(lat1=lat, lon1 = long, bearing = initial_bearing + 180, distance = distance_behind)
+        azib += 180
+    else:
+        latb = lat
+        longb = long
+        azib = initial_bearing
+
+    # calculate bottom left corner
+    lat_bl, lon_bl, azi_bl = direct_haversine(lat1=latb, lon1 = longb, bearing = azib - 90, distance = distance_lateral)
+        
+    # calculate bottom right corner
+    lat_br, lon_br, azi_br = direct_haversine(lat1=latb, lon1 = longb, bearing = azib + 90, distance = distance_lateral)
+
+    # calculate point ahead
+    lat_a, lon_a, azi_a = direct_haversine(lat1=lat, lon1 = long, bearing = initial_bearing, distance = distance_ahead)
+    
+    # calculate top left corner
+    lat_tl, lon_tl, azi_tl = direct_haversine(lat1=lat_a, lon1 = lon_a, bearing = azi_a - 90, distance = distance_lateral)
+
+    # calculate top right corner
+    lat_tr, lon_tr, azi_tr = direct_haversine(lat1=lat_a, lon1 = lon_a, bearing = azi_a + 90, distance = distance_lateral)
+    
+
+    return [(lat_bl, lon_bl), (lat_tl, lon_tl), (lat_tr, lon_tr), (lat_br, lon_br)]
 
 if __name__ == "__main__":
-    test()
+    # test the functions
+    result = xtrack_haversine(45, -20.0, 45.0, -30.0, 44.0, -25.0)
+    print(result)
+    

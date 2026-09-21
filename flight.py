@@ -16,10 +16,10 @@ from actype import *
 from statistics import mode
 
 def get_direction(direction:float):
-    azimuth = mod(direction, 360)
-    return EASTBOUND if 5.0 <= azimuth < 175.0 else \
-           WESTBOUND if 185.0 < azimuth <= 355.0 else \
-           NORTHBOUND if (355.0 < azimuth or 5.0 > azimuth) else \
+    bearing = mod(direction, 360)
+    return EASTBOUND if 5.0 <= bearing < 175.0 else \
+           WESTBOUND if 185.0 < bearing <= 355.0 else \
+           NORTHBOUND if (355.0 < bearing or 5.0 > bearing) else \
            SOUTHBOUND
 
 def get_sub_field(field18: str) -> dict:
@@ -115,6 +115,7 @@ class Flight:
             self.callsign = info[CALLSIGN].strip()
         except:
             self.callsign = None
+            # to debug missing callsign information
             input(f'{info} press any key!')
 
         # flight aerodrome of departure
@@ -220,7 +221,7 @@ class Flight:
         self.surveillance = []
 
         # will contain the list of interpolated position reports, to the second
-        self.interpolated = []
+        self.interpolated = {}
 
         # will contain the list of flight profile fixes, sorted by timestamp asc
         self.profile = []
@@ -241,11 +242,39 @@ class Flight:
 
         self.direction = None
 
+    def set_selected(self, log : bool = False):
+        """
+        defines the state of each flight, according to the presence of interpolated position reports, and the maximum and minimum levels found in these reports.
+        log: if true, will print the reason why a flight is discarded, if it is the case.
+        returns the state of the flight (selected or not)
+        """
+        if len(self.interpolated) > 1 and self.maxlevel >= 288.00 and self.minlevel <= 412.00:
+            self.selected = True
+        else:
+            self.selected = False
+            if log:
+                print(f'Flight with id {self.id} is discarded.')
+                if len(self.profile) < 2:
+                    print('\tCleared profile incomplete.')
+                if len(self.surveillance) < 2:
+                    print(f'\tFlown profile incomplete.')
+                if len(self.interpolated) < 2:
+                    print(f'\tInterpolated profile incomplete.')
+                if self.maxlevel<288.0:
+                    print(f'\tThe flight was always below RVSM.')
+                if self.minlevel>412.0:
+                    print(f'\tThe flight was always above RVSM.')
+                    
+        return self.selected
+    
+    @property
     def elapsed_time_surveillance(self) -> float:
+        
         try:
             result = (self.surveillance[-1].timestamp_bin - self.surveillance[0].timestamp_bin).total_seconds()
         except:
             result = None
+        
         return result
 
     def elapsed_time_profile(self) -> float:
@@ -276,7 +305,8 @@ class Flight:
         except Exception as error:
             print(self.id, ' ',self.callsign,' ', error)
             result = 0.0
-        return result
+        return result    
+    """
 
     def set_flight_direction_interpolated(self):       
         try:
@@ -284,8 +314,7 @@ class Flight:
         except Exception as error:
             self.direction = None
             # log error
-    """
-
+    
     def average_speed_interpolated(self):
         if self.interpolated is not None and len(self.interpolated)>0:
             result = np.array([self.interpolated[item][4] for item in self.interpolated], dtype= float).mean()
@@ -418,12 +447,13 @@ class Flight:
                 entry : Report = self.profile[0]
                 exit : Report = self.profile[-1]
                 elapsed_profile = round((exit.timestamp_bin - entry.timestamp_bin).total_seconds()/3600,2)
+            
             result = [self.id, self.callsign, round(self.elapsed_time_surveillance()/3600, 2), elapsed_profile, self.actype, self.wtc, self.pbcs, self.code,
                       self.ots, len(self.profile), len (self.surveillance), len(self.interpolated),self.min_fl, self.max_fl, entry.lat, entry.long, entry.timestamp_bin,
                       exit.lat, exit.long, exit.timestamp_bin, self.surveillance[0].timestamp_bin, self.surveillance[-1].timestamp_bin]
         except Exception as error:
             result = None
-            print(error)
+            # print(error)
         return result
         
         
@@ -497,9 +527,9 @@ class Flight:
                 longsep_behind_f2 = 15 * p2[4] / 60
 
             # protected airspace for flight1
-            box1 = get_bounding_box(p=p1, lateral=latsep + 1, dist=longsep_ahead_f1, behind=longsep_behind_f1)
+            box1 = get_bounding_box_haversine(p=p1, lateral=latsep + 1, dist=longsep_ahead_f1, behind=longsep_behind_f1)
             # protected airspace for flight2
-            box2 = get_bounding_box(p=p2, lateral=latsep + 1, dist=longsep_ahead_f2, behind=longsep_behind_f2)
+            box2 = get_bounding_box_haversine(p=p2, lateral=latsep + 1, dist=longsep_ahead_f2, behind=longsep_behind_f2)
 
         else:
             angle = None
@@ -570,7 +600,7 @@ class Flight:
 
     # used there are too many surveillance reports
     def decimate_surveillance(self, step = 10):
-        if self.surveillance and step>1:
+        if self.surveillance and step > 1:
             self.surveillance = self.surveillance[0:-1:step]
     
     """
@@ -700,15 +730,14 @@ class Flight:
         result: dict = {}
         
         bearing = 0.0
-        old_bearing = None
 
         # we need at least 2 surveillance reports, currently step 0
         
         # surv = self.surveillance[0:-1]
         length = len(self.surveillance)
         if length > 1:
-            # determine here the bearing of the first position report
-            # ...
+            
+            # TODO determine here the ground track of the first position report
 
             # get the first second of the report, in unix timestamp 
             current_second = ceil(datetime.timestamp(self.surveillance[0].timestamp_bin))
@@ -723,43 +752,32 @@ class Flight:
                     # calc distance and initial bearing between two reports
                     # noinspection PyUnresolvedReferences
                     try:
-                        calc1 = Geodesic.WGS84.Inverse(lat1=p1.lat, lon1=p1.long, lat2=p2.lat, lon2=p2.long)
+                        dp1p2, bp1p2, bp2p1 = inverse_haversine(lat1 = p1.lat, lon1 = p1.long, 
+                                                                lat2 = p2.lat, lon2 = p2.long)
                     except:
                         # maybe print an error message ? 
                         # proceed to next pair of reports
                         continue
                         
-                    distance_p1p2 = calc1["s12"]
-                    # make sure that 0 <= new_bearing < 360.0
-                    new_bearing = mod(calc1["azi1"],360.0)
-
                     """
-                    # determine rate of turn
-
-                    if old_bearing is None:
-                        old_bearing = new_bearing
-                    else:
-                        old_bearing = bearing
-
-                    bearing = new_bearing
-                    
-                    # determine if the flight is turning
-                    rot = abs(old_bearing - bearing) / delta
-                    if rot >3:
-                        # the flight is turning
-                        # print(rot, " ", self.callsign," ",old_bearing," ",bearing, " ", mod(heading_diff(h1=old_bearing, h2=bearing),360))
-                        pass
+                    TODO determine rate of turn, to determine if the bearing is changing
+                    between the two reports, and if so, to determine the bearing at the desired timestamp,
+                    instead of assuming a constant bearing between the two reports.
                     """
                     
                     # verify if the points are the same
-                    if distance_p1p2 == 0:
+                    # if the distance is zero, we will not be able to calculate the speed, 
+                    # and the position at the desired timestamp will be the same as the first report,
+                    # so we can skip the calculations                    
+                    if dp1p2 == 0:
                         # no_dist +=1 
                         # print(self.callsign,' ',no_dist, delta)
                         pass
                     
                     # calculates speed using the reports, in m/s
-                    speed = distance_p1p2 / delta
-                    
+                    # speed = distance_p1p2 / delta
+                    speed = dp1p2 / delta
+
                     # check if the flight is moving too too fast, set a global parameter
                     # this code serves just to set a breakpoint, if needed
                     if speed >= 350:
@@ -767,27 +785,31 @@ class Flight:
                         # print(self.acid, " - speed ",speed, " at seconds ",seconds)
 
                     # calculate the altitude variation rate
+                    # deverá ter em conta os reportes ADS-C com altitudes diferentes, poderá 
+                    # deturpar a velociade vertical média
+
                     climb_rate = (p2.fl - p1.fl) / delta
                     
                     first_second = datetime.timestamp(p1.timestamp_bin) 
                     last_second = datetime.timestamp(p2.timestamp_bin)
 
                     # beware of floating point comparisons
-                    while current_second <= last_second:
+                    while current_second <= last_second:                        
                         if first_second == current_second:
                             lat = p1.lat
-                            long = p1.long
+                            lon = p1.long
                             fl = p1.fl
-                            azimuth = new_bearing #calc1["azi1"]
+                            bearing = bp1p2 #calc1["azi1"]
                             # result[seconds] = [p1.lat,p1.long, p1.fl, p1.gt, p1.gs]
                         elif current_second == last_second:
                             lat = p2.lat
-                            long = p2.long
+                            lon = p2.long
                             fl = p2.fl
-                            azimuth = calc1["azi2"]
+                            #azimuth = calc1["azi2"] # ground track at the end of the segment
+                            bearing = mod(bp2p1+180, 360)
                             # result[seconds] = [p2.lat,p2.long, p2.fl, p2.gt, p2.gs]
                         else:
-                            azimuth = new_bearing #calc1["azi1"]
+                            #azimuth = bp1p2 #calc1["azi1"]
                             # calculate elapsed time between the first report and the timestamp we are considering
                             delta2 = current_second - first_second
                             # calculate the distance traveled from the first report to the position at
@@ -797,22 +819,20 @@ class Flight:
                             # calculate the required fix, given the distance traveled and the initial
                             # bearing obtained in calc1
                             # noinspection PyUnresolvedReferences
-                            calc2 = Geodesic.WGS84.Direct(lat1=p1.lat, lon1=p1.long, azi1=azimuth, s12=dist)
-                            lat = calc2["lat2"]
-                            long = calc2["lon2"]
-                            azimuth = calc2["azi2"]
+
+                            lat, lon, bearing = direct_haversine(lat1 = p1.lat, lon1=p1.long, bearing = bp1p2, distance = dist)
+                            
+                            # calc2 = Geodesic.WGS84.Direct(lat1=p1.lat, lon1=p1.long, azi1=bp1p2, s12=dist)
+                            # lat = calc2["lat2"]
+                            # long = calc2["lon2"] 
+                            # bearing = calc2["azi2"]
                             
                             # calculate the expected altitude using the elapsed time and the climb rate                            
-                            fl = round( p1.fl + climb_rate * delta2, 2)
+                            fl = round( p1.fl + climb_rate * delta2, 2)                        
 
-                        # Can be removed, already taken care off
-                        # make sure the 0 <= azimuth < 360.0
-                        azimuth = mod(azimuth, 360)
-                        # if azimuth < 0.0:
-                        # azimuth = 360.0 + azimuth
-
-                        # calculate the next position in TIME_VECTOR seconds
-                        next_vector= Geodesic.WGS84.Direct(lat1=lat, lon1=long, azi1=azimuth, s12=speed * TIME_VECTOR)
+                        # calculate the next position in TIME_VECTOR seconds, used for charting
+                        # check if this is really necessary
+                        next_lat, next_lon, next_bearing = direct_haversine(lat1 = lat, lon1 = lon, bearing = bearing, distance = speed * TIME_VECTOR)
 
                         # speed in knots
                         speed_knots = speed * (3600 / 1852)
@@ -821,7 +841,7 @@ class Flight:
                         climb_rate_fpm = climb_rate * (100 * 60) 
 
                         # speed in knots, vertical speed in feet per minute
-                        result[current_second] = [lat, long, fl, azimuth, speed_knots, next_vector["lat2"], next_vector["lon2"], climb_rate_fpm]
+                        result[current_second] = [lat, lon, fl, bearing, speed_knots, next_lat, next_lon, climb_rate_fpm]
                         current_second += 1
                 else:
                     # the time difference between the reports is zero, no calculation will
@@ -831,8 +851,12 @@ class Flight:
                     # print (self.id,"\n", p1,"\n",p2)
 
         self.interpolated = result
-
         self.set_flight_direction_interpolated()
+
+        # gravar aqui o dataset de interpolados, para comparar com os i
+        # interpolados do dataset de teste, para validar o processo de interpolação.
+    
+
 
     def has_interpolated(self, at_second: int) -> bool:
         """
@@ -886,6 +910,7 @@ class Flight:
         lateral_pair = False
         overlap = False        
         direction = None        
+        
         longitudinal_separation = 120
         lateral_separation = 100
 
@@ -925,11 +950,12 @@ class Flight:
                     # overlap_long = longitudinal distance between the pair is less than the sum of the both flight's length
                     
                     # Calculate the track-to-track distance between both flights, in NM,
-                    calc1 = Geodesic.WGS84.Inverse(lat1 = p1[0], lon1=p1[1], lat2 = p2[0], lon2 = p2[1])
-                    distance_p1p2 = calc1["s12"] / 1852
+                    distance_p1p2 = inverse_haversine(lat1 = p1[0], lon1=p1[1], lat2 = p2[0], lon2 = p2[1])[0] / 1852
+                    # calc1 = Geodesic.WGS84.Inverse(lat1 = p1[0], lon1=p1[1], lat2 = p2[0], lon2 = p2[1])
+                    # distance_p1p2 = calc1["s12"] / 1852
 
                     # check if the flights are so far apart that they do not constitute a pair
-                    if (direction == OPPOSITE and distance_p1p2 >= 400) or distance_p1p2 >= 200:
+                    if (direction == OPPOSITE and distance_p1p2 >= 400) or (distance_p1p2 >= 200):
                         # could be better coded to avoid 2 return instructions
                         return vertical_pair, lateral_pair, direction, overlap, longitudinal_separation, lateral_separation
 
@@ -958,15 +984,16 @@ class Flight:
                     
                     lateral_separation = 100
                     longitudinal_separation = 15 
-                    distance_i = p1[4] * 15/60
-                    distance_j = p2[4] * 15/60
+                    # distance_i = p1[4] * 15 / 60
+                    # distance_j = p2[4] * 15 /60
 
                     # add code to calculate the longitudinal and lateral distances between two flights, to avoid the boxes.
 
                     # protected airspace for flight1
-                    box_i = get_bounding_box(p=p1, lateral=lateral_separation, dist=distance_i, behind=distance_i)
+                    box_i = get_bounding_box_haversine(p = p1, lateral=lateral_separation, time_ahead = 15, time_behind = 15)
+                    
                     # protected airspace for flight2
-                    box_j = get_bounding_box(p=p2, lateral=lateral_separation, dist=distance_j, behind=distance_j)
+                    box_j = get_bounding_box_haversine(p = p2, lateral=lateral_separation, time_ahead = 15, time_behind = 15)
                     
                     # flag to indicate if the flights are separated by 1000', will be used for vertical occupancy
                     
@@ -1003,7 +1030,16 @@ class Flight:
 
                     # if the flights are at the same altitude, determine lateral proximity
                     if dfl <= ALT_THRESHOLD_SAME:
-                        lateral_pair = False
+
+                        # TODO determine if the flights are a longitudinal pair,
+                        # using the protected airspace boxes, to avoid calculating the cross track distance for all pairs
+                        # of flights at the same altitude, which is computationally expensive
+
+                        # Sx for longitudinal pairs, to be reviewed, maybe add a margin to the distance condition
+                        # 2*Sx for opposite direction, Sx for same direction,
+                        # to be reviewed, maybe add a margin to the distance condition
+                        
+                        # lateral_pair = False
                         # determine if it is a parallel pair, using Atul's method
                         # LATERAL_SEPARATION_HB = 100 # try with 100 NM, to be similar to NAV Canada criteria for lateral pairs, to be reviewed
 
@@ -1012,7 +1048,6 @@ class Flight:
                         lateral_pair = is_fix_inside(lat=p2[0], long=p2[1], fix_list=box_i)
 
                         if not lateral_pair:
-                            # box_j_100 = get_bounding_box(p=p2, lateral=LATERAL_SEPARATION_HB, dist = distance_j, behind = distance_j)
                             lateral_pair = is_fix_inside(lat=p1[0], long=p1[1], fix_list=box_j)
 
                         """ New method, to be reviewed, to determine if the flights are lateral pairs,
@@ -1076,4 +1111,4 @@ class Flight:
         if not vertical_pair and overlap:
             pass
 
-        return vertical_pair, lateral_pair, direction, overlap, longitudinal_separation, lateral_separation
+        return vertical_pair, lateral_pair, direction, overlap, 120, 100 # longitudinal_separation, lateral_separation
