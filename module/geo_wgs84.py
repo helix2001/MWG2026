@@ -375,7 +375,6 @@ def point_on_gc(lat1:float,long1:float,lat2:float,long2:float, latx:float, longx
 
     return result
 
-
 def x_track_fix(lat_1 :float, long_1 : float ,lat_2 : float, long_2:float, latx : float,longx :float) -> tuple[float,float, float, float]:
     """ 
     Calculates the perpendicular distance from px->(latx,longx) to the great circle
@@ -589,11 +588,8 @@ def test():
     print(latlong_to_str(result[0], result[1]))
 
 if __name__ == "__main__":
-    distance = 60 * 1852
-    lat,lon = (haversine_direct(39, -20, 180, distance))
-    print(lat, lon)
-    print(latlong_to_str(lat, lon))
+    # test()
 
-    print(haversine_distance(38,-20,39,-20) * SPHERICAL_RADIUS/1852)  
-      
-    test()
+    
+    print(x_track_fix(45, -20.0, 45.0, -40.0, 44.0, -25.0))
+    print(xtrack_haversine(45, -20.0, 45.0, -40.0, 44.0, -25.0))

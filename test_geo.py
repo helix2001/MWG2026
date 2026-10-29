@@ -1,6 +1,7 @@
 from time import perf_counter
 
-from module.geo import distance_haversine, get_bounding_box, get_bounding_box_haversine
+from module.geo import distance_haversine,  get_bounding_box_haversine
+from module.geo_wgs84 import get_bounding_box
 
 
 def test() -> None:

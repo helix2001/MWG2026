@@ -856,8 +856,6 @@ class Flight:
         # gravar aqui o dataset de interpolados, para comparar com os i
         # interpolados do dataset de teste, para validar o processo de interpolação.
     
-
-
     def has_interpolated(self, at_second: int) -> bool:
         """
         Returns true if the requested timestamp has been interpolated
@@ -890,6 +888,7 @@ class Flight:
         return True
 
     def check_proximity_t(self, other: Flight, t: int, alt_min_dif : int = 0, alt_max_dif = ALT_THRESHOLD_1000, step : int = 1, speed :float = 1 ) -> Tuple[bool, bool, str, str, bool, float, float]:
+        
         """
         Check if a flight interacts (is proximate) with another
         Args:
@@ -905,13 +904,15 @@ class Flight:
             [SAMEDIR|RECIPROCAL] for traffic direction
             True if both flights overlap
         """
+
         # define default results        
         vertical_pair = False
         lateral_pair = False
         overlap = False        
         direction = None        
         
-        longitudinal_separation = 120
+        longitudinal_separation_nm = DEFAULT_LONGITUDINAL_SEP_NM
+        longitudinal_separation_time = DEFAULT_LONGITUDINAL_SEP_TIME
         lateral_separation = 100
 
         # make sure both flights have interpolated reports for the required timestamp
@@ -933,7 +934,8 @@ class Flight:
             direction = SAMEDIR if angle < 90.0 else OPPOSITE
 
             # are both flights inside HLA ?
-            if 28800 <= alt1 <= 41200 and 28800 <= alt2 <= 41200:
+            # 300' threshold
+            if 28700 <= alt1 <= 41300 and 28700 <= alt2 <= 41300:
                 # calculate difference between flight levels
                 dfl = round(abs(alt1 - alt2), 0)
 
@@ -941,23 +943,21 @@ class Flight:
                 if alt_min_dif <= dfl <= alt_max_dif:
                     
                     # calculate the relative position of the flights, to determine if they are in the same area of the airspace
-                    # new algorithm, to be reviewed.
-                    # ...
-                    #
-
+                    
                     # TODO calculate overlapping in longitudinal dimension
                     # project one flight's position in the other flight's route                    
                     # overlap_long = longitudinal distance between the pair is less than the sum of the both flight's length
                     
                     # Calculate the track-to-track distance between both flights, in NM,
                     distance_p1p2 = inverse_haversine(lat1 = p1[0], lon1=p1[1], lat2 = p2[0], lon2 = p2[1])[0] / 1852
+                    
                     # calc1 = Geodesic.WGS84.Inverse(lat1 = p1[0], lon1=p1[1], lat2 = p2[0], lon2 = p2[1])
                     # distance_p1p2 = calc1["s12"] / 1852
 
                     # check if the flights are so far apart that they do not constitute a pair
                     if (direction == OPPOSITE and distance_p1p2 >= 400) or (distance_p1p2 >= 200):
                         # could be better coded to avoid 2 return instructions
-                        return vertical_pair, lateral_pair, direction, overlap, longitudinal_separation, lateral_separation
+                        return vertical_pair, lateral_pair, direction, overlap, longitudinal_separation_nm, lateral_separation
 
                     # check if the pair is closer than the biggest dimension of the two aircraft
                     # dimensions_nm = max(self.max_dimension, other.max_dimension)/1852
@@ -982,23 +982,24 @@ class Flight:
                     # lateral = 'RNP4'
                     # precision = 'PBCS'
                     
-                    lateral_separation = 100
-                    longitudinal_separation = 15 
                     # distance_i = p1[4] * 15 / 60
-                    # distance_j = p2[4] * 15 /60
+                    # distance_j = p2[4] * 15 / 60
 
                     # add code to calculate the longitudinal and lateral distances between two flights, to avoid the boxes.
 
                     # protected airspace for flight1
-                    box_i = get_bounding_box_haversine(p = p1, lateral=lateral_separation, time_ahead = 15, time_behind = 15)
+                    box_i = get_bounding_box_haversine(p = p1, lateral=lateral_separation, time_ahead = longitudinal_separation_time, time_behind = longitudinal_separation_time)
+                    box_i_120 = get_bounding_box_haversine(p = p1, lateral=lateral_separation, dist = longitudinal_separation_nm, time_ahead = None, time_behind = None)
+
                     
                     # protected airspace for flight2
-                    box_j = get_bounding_box_haversine(p = p2, lateral=lateral_separation, time_ahead = 15, time_behind = 15)
+                    box_j = get_bounding_box_haversine(p = p2, lateral=lateral_separation, time_ahead = longitudinal_separation_time, time_behind = longitudinal_separation_time)
+                    box_j_120 = get_bounding_box_haversine(p = p2, lateral=lateral_separation, dist = longitudinal_separation_nm, time_ahead = None, time_behind = None)
                     
                     # flag to indicate if the flights are separated by 1000', will be used for vertical occupancy
-                    
-                    # one_fl = True if 900 <= dfl <= 1100 else False
-                    one_fl = True if 900 <= dfl <= alt_max_dif else False
+                    # one_fl = True if 900 <= dfl <= alt_max_dif else False
+
+                    one_fl = True if 400 <= dfl <= alt_max_dif else False
                     
                     # Determine if proximate vertical pairs
                     # vertical_pair = False

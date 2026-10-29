@@ -14,7 +14,9 @@ PORTUGAL = 4
 
 # default separation minima, in NM or minutes, depending on the context
 DEFAULT_LATERAL_SEP = 100
-DEFAULT_LONGITUDINAL_SEP = 15
+DEFAULT_LONGITUDINAL_SEP_TIME = 15
+DEFAULT_LONGITUDINAL_SEP_NM = 120
+DEFAULT_LONGITUDINAL_SEP_M = DEFAULT_LONGITUDINAL_SEP_NM * 1852
 
 # for calculating seconds from midnight
 MIDNIGHT_STR = '1970-01-01 '
@@ -86,22 +88,26 @@ TRACK = ['O/O','R/R','O/R']
 # NO OCCUPANCY CALCULATED
 NO_OCCUP = "-"
 
-# time vector , in seconds
+# time vector for look ahead, in seconds. Currently 10 minutes
 TIME_VECTOR = 600
 
 # parallel route threshold
 # maximum bearing difference between two tracks
 # to be considered as parallel
-PARALLEL_THRESHOLD = 1.0
+# as of 2026-09-21, 3 NM
+PARALLEL_THRESHOLD = 3.0
 
 # altitude thresholds
-ALT_THRESHOLD_SAME = 100.0
-ALT_THRESHOLD_1000 = 1025.0
 
-# Initial timestamp, seconds from midnight
+# as off 2026-09-21, 300'
+ALT_THRESHOLD_SAME = 400.0
+# as of 2026-09-21, 600'
+ALT_THRESHOLD_1000 = 1400.0
+
+# Initial timestamp, seconds from midnight (uh ?)
 REFERENCE_TIMESTAMP = 43200
 
-# Default time span, seconds
+# Default time span, seconds (uh ?)
 REFERENCE_SPAN = 3600
 
 # HLA altitudes
@@ -110,8 +116,9 @@ HLA_HIGH = 41000
 
 # Status for opposite direction traffic
 # define as integer, will make the computations faster ???
-BEFORE = "BEFORECROSSING"
-AFTER = "AFTERCROSSING"
+
+BEFORE = "BEFORE_PASSING"
+AFTER = "AFTER_PASSING"
 
 # separation minima descriptions
 
@@ -124,7 +131,7 @@ SEP_RNP10 = "RNP10"
 SEP_HLA = "HLA"
 
 # precision
-SEP_NONPBCS = "NONPBCS"
+SEP_NONPBCS = "NON-PBCS"
 # PBCS implies CPDLC connection
 SEP_PBCS = "PBCS"
 # SURV implies PBCS, RNP4 and surveillance reports
@@ -166,10 +173,10 @@ LONG_SEP = {
             SEP_SURV: {SEP_RNP4: 5, SEP_RNP10: -10, SEP_HLA: -10}}}}
 
 # VHF, surveillance, track to track, NM
-VHF_TT = 5
+TT_VHF = 5
 
 # SURVEILLANCE, RCP240, track to track, NM
-ASEPS_TT = 15
+TT_ASEPS = 15
 
 # NON-SURVEILLANCE, PBCS, RNP4, track to track, NM
 PBCS_RNP4_TT = 30
@@ -184,6 +191,7 @@ RNP10_TT = 50
 # ocuppancy types
 VERTICAL = "VERTICAL"
 LATERAL = "LATERAL"
+LONGITUDINAL = 'LONGITUDINAL'
 OO     = "OO"
 RR  = "RR"
 OR  = "OR"
