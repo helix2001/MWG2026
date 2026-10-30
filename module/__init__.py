@@ -2,6 +2,7 @@ import datetime
 from collections import namedtuple
 
 # named tuple for 3D calculations
+# can it be replaced by numpy array for better performance in vectorized operations ?
 Vector3D = namedtuple('ThreeD',['x','y','z'])
 Vector3D.__doc__ = """ Tuple that represents a 3D vector """
 
@@ -13,10 +14,18 @@ NEWYORK  = 3
 PORTUGAL = 4
 
 # default separation minima, in NM or minutes, depending on the context
-DEFAULT_LATERAL_SEP = 100
 DEFAULT_LONGITUDINAL_SEP_TIME = 15
 DEFAULT_LONGITUDINAL_SEP_NM = 120
 DEFAULT_LONGITUDINAL_SEP_M = DEFAULT_LONGITUDINAL_SEP_NM * 1852
+
+# modifiers for lateral separation, in NM
+
+# requirement v1.0, 3.2
+GENTLE_SLOPE = 5
+SLOP         = 2
+DEFAULT_LATERAL_SEP = 60
+DEFAULT_LATERAL_SEP_MIN = DEFAULT_LATERAL_SEP - GENTLE_SLOPE - SLOP
+DEFAULT_LATERAL_SEP_MAX = DEFAULT_LATERAL_SEP + GENTLE_SLOPE + SLOP
 
 # for calculating seconds from midnight
 MIDNIGHT_STR = '1970-01-01 '
@@ -62,16 +71,18 @@ TIMESTAMP = "TIMESTAMP"
 SECONDS = "SECONDS"
 SLOP = "SLOP"
 
+# FOX Process v1.0
 # traffic type
 SAMEDIR = 0
 CROSSING = 1
 OPPOSITE = 2
-RECIPROCAL = OPPOSITE
+RECIPROCAL = 3
+SAME_PARALLEL = 4
+OPP_PARALLEL = 5 
 
-TRAFFIC_TYPE = ['SAME','CROSSING','OPPOSITE']
+TRAFFIC_TYPE = ['SAME','CROSSING','OPPOSITE','RECIPROCAL','SAME_PARALLEL','OPP_PARALLEL']
 
 # flight's direction
-
 EASTBOUND = 0
 WESTBOUND = 1
 NORTHBOUND = 2
@@ -89,20 +100,19 @@ TRACK = ['O/O','R/R','O/R']
 NO_OCCUP = "-"
 
 # time vector for look ahead, in seconds. Currently 10 minutes
+# used in graphical representations and calculations for look-ahead time
 TIME_VECTOR = 600
 
-# parallel route threshold
-# maximum bearing difference between two tracks
-# to be considered as parallel
-# as of 2026-09-21, 3 NM
+# FOX process v1.0
+# parallel route threshold, in degrees
+# maximum bearing difference between two tracks for them to be considered as parallel
 PARALLEL_THRESHOLD = 3.0
 
+# FOX process v1.0
 # altitude thresholds
 
-# as off 2026-09-21, 300'
 ALT_THRESHOLD_SAME = 400.0
-# as of 2026-09-21, 600'
-ALT_THRESHOLD_1000 = 1400.0
+ALT_THRESHOLD_1000 = 1600.0
 
 # Initial timestamp, seconds from midnight (uh ?)
 REFERENCE_TIMESTAMP = 43200
@@ -110,33 +120,38 @@ REFERENCE_TIMESTAMP = 43200
 # Default time span, seconds (uh ?)
 REFERENCE_SPAN = 3600
 
+
+# FOX process v1.0
 # HLA altitudes
-HLA_LOW = 29000
-HLA_HIGH = 41000
+HLA_LOW = 29000 - ALT_THRESHOLD_SAME/2
+HLA_HIGH = 41000 + ALT_THRESHOLD_SAME/2
 
 # Status for opposite direction traffic
 # define as integer, will make the computations faster ???
+BEFORE = 0
+AFTER = 1
+PASSING_STATUS = ["BEFORE_PASSING", "AFTER_PASSING"]
 
-BEFORE = "BEFORE_PASSING"
-AFTER = "AFTER_PASSING"
-
+# FOX process v1.0
 # separation minima descriptions
 
 # VHF coverage
-SEP_VHF = "VHF"
+SEP_VHF = 0
 
 # lateral
-SEP_RNP4 = "RNP4"
-SEP_RNP10 = "RNP10"
-SEP_HLA = "HLA"
+SEP_RNP4 = 1
+SEP_RNP10 = 2
+SEP_HLA = 3
+SEP_GNSS = 4
 
-# precision
-SEP_NONPBCS = "NON-PBCS"
-# PBCS implies CPDLC connection
-SEP_PBCS = "PBCS"
-# SURV implies PBCS, RNP4 and surveillance reports
-# or considering ADSB flag from the flight plan
-SEP_SURV = "SURV"
+# PBCS implies CPDLC connection existed
+SEP_PBCS = 5
+SEP_NONPBCS = 6   
+
+# SURV implies PBCS, RNP4 and (surveillance reports or considering ADSB flag from the flight plan
+SEP_SURV = 7
+
+SEP = ['VHF', 'RNP4', 'RNP10', 'HLA', 'GNSS', 'PBCS', 'NONPBCS', 'SURV']
 
 # Dictionaries containing separation minima
 # negative values represent minutes,
@@ -188,13 +203,17 @@ PBCS_RNP10_TT = 40
 # NON-SURVEILLANCE, NONPBCS, RNP10, track to track, NM
 RNP10_TT = 50
 
+# FOX process v1.0
 # ocuppancy types
-VERTICAL = "VERTICAL"
-LATERAL = "LATERAL"
-LONGITUDINAL = 'LONGITUDINAL'
-OO     = "OO"
+VERTICAL = 0
+LATERAL = 1
+LONGITUDINAL = 2
+OCCUPANCY = ['VERTICAL', 'LATERAL', 'LONGITUDINAL']
+
+OO  = "OO"
 RR  = "RR"
 OR  = "OR"
+
 OPP = 5
 SAME = 6,
 COMBINED = 7

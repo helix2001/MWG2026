@@ -66,6 +66,20 @@ def heading_diff(h1:float, h2:float)->float:
     angle = acos(round( cos (h1) * cos(h2) +sin(h1) * sin(h2),5) ) * RADTODEG
     return round(angle,3)
 
+# calculates the mean earth radius for a given latitude based on the WGS84 ellipsoid model
+def mean_radius_lat(lat: float) -> float:
+    """
+    returns the mean earth radius for a given latitude, which should be in degrees
+    """
+    try:
+        lat = radians(abs(lat))
+        result = sqrt(((A**2 * cos(lat))**2 + (B**2 * sin(lat))**2)/ ((A * cos(lat))**2 + (B * sin(lat))**2))
+   
+    except Exception as e:
+        result = None
+
+    return result
+
 # given lat/lon, bearing and distance, determine the point lat/lon 
 def haversine_direct(lat1:float, lon1:float, bearing:float, distance:float) -> tuple[float|None,float|None]:
     """
@@ -501,7 +515,7 @@ def is_fix_inside(lat:float, long:float, fix_list:list) -> bool:
     # returns the result    
     return result
 
-def get_bounding_box(p:list, lateral:int = 50, time : int = -15, dist : int = None, behind:int = 0) -> list:
+def get_bounding_box(p:list, lateral:int = 50, time : int = 15, dist : int = None, behind:int = 15) -> list:
     """
     Calculate the bounding box for an aircraft
     Args:
@@ -512,48 +526,48 @@ def get_bounding_box(p:list, lateral:int = 50, time : int = -15, dist : int = No
     Returns:
         Tuple containing 4 points, representing the lb, lt, rt, rb points of the bounding box
     """
+    
     lat = p[0]
     long = p[1]
     azimuth = p[3]
     # convert speed from knots to m/s
-    speed = p[4]/60 * 1852 
+    speed = p[4] * 1852 /60 
     distance_lateral = lateral * 1852
 
-    # if behind is negative means time.
-    # convert to distance
-    distance_behind = abs(behind) * speed if behind < 0 else behind * 1852
+    # convert behind time to distance if needed
+    distance_behind = abs(behind) * speed
+    
+    # calculate longitudinal distance ahead
+    distance_ahead = dist * 1852 if dist is not None else abs(time) * speed 
 
     # calculate the point behind, if needed
     if distance_behind > 0 :
         calc0 = Geodesic.WGS84.Direct(lat1=lat, lon1 = long, azi1 = azimuth + 180, s12 = distance_behind)
         # get point behind the flight
-        lat_b = calc0["lat2"]
-        long_b = calc0["lon2"]
-        azi_b = mod(calc0["azi2"]+180.0,360.0)
+        lat_behind = calc0["lat2"]
+        long_behind = calc0["lon2"]
+        azi_behind  = mod(calc0["azi2"]+180.0,360.0)
     else:
-        lat_b = lat
-        long_b = long
-        azi_b = azimuth
+        lat_behind = lat
+        long_behind = long
+        azi_behind = azimuth
 
     # calculate bottom left corner
-    calc1 = Geodesic.WGS84.Direct(lat1=lat_b, lon1 = long_b, azi1 = azi_b - 90, s12 = distance_lateral )
+    calc1 = Geodesic.WGS84.Direct(lat1=lat_behind, lon1 = long_behind, azi1 = azi_behind - 90, s12 = distance_lateral )
     # calculate bottom right corner
-    calc4 = Geodesic.WGS84.Direct(lat1=lat_b, lon1 = long_b, azi1 = azi_b + 90, s12 = distance_lateral )
+    calc4 = Geodesic.WGS84.Direct(lat1=lat_behind, lon1 = long_behind, azi1 = azi_behind + 90, s12 = distance_lateral )
 
-    # calculate 
-    distance_long = abs(time) * speed if dist == None else dist * 1852
-
-    calc_next = Geodesic.WGS84.Direct(lat1=lat, lon1 = long, azi1 = azimuth, s12 = distance_long )
+    calc_next = Geodesic.WGS84.Direct(lat1=lat, lon1 = long, azi1 = azimuth, s12 = distance_ahead )
     # get coordinates of the calculated point
-    next_lat = calc_next["lat2"]
-    next_long = calc_next["lon2"]
+    lat_ahead = calc_next["lat2"]
+    long_ahead = calc_next["lon2"]
     # get the azimuth at the calculated point
-    azi_n = mod(calc_next["azi2"],360)
+    azi_ahead = mod(calc_next["azi2"],360)
 
     # calculate top left corner
-    calc2 = Geodesic.WGS84.Direct(lat1=next_lat, lon1 = next_long, azi1 = azi_n - 90, s12 = distance_lateral )
+    calc2 = Geodesic.WGS84.Direct(lat1=lat_ahead, lon1 = long_ahead, azi1 = azi_ahead - 90, s12 = distance_lateral )
     # calculate top right corner
-    calc3 = Geodesic.WGS84.Direct(lat1=next_lat, lon1 = next_long, azi1 = azi_n + 90, s12 = distance_lateral )
+    calc3 = Geodesic.WGS84.Direct(lat1=lat_ahead, lon1 = long_ahead, azi1 = azi_ahead + 90, s12 = distance_lateral )
     
     result= [(calc1["lat2"],calc1["lon2"]) , (calc2["lat2"],calc2["lon2"]), (calc3["lat2"],calc3["lon2"]) , (calc4["lat2"],calc4["lon2"])]
 

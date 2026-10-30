@@ -5,13 +5,15 @@
 /*.ipynb
 data/
 NAVP_2025/
-/*.csv
 /*.obj
 /*.7z
 /*.xlsx
 /*.xls  
 /*.doc
 /*.docx
+
+# ficheiros especificos
+voo.py
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

@@ -887,15 +887,15 @@ class Flight:
         # return self.adsb and (ts == 0)
         return True
 
-    def check_proximity_t(self, other: Flight, t: int, alt_min_dif : int = 0, alt_max_dif = ALT_THRESHOLD_1000, step : int = 1, speed :float = 1 ) -> Tuple[bool, bool, str, str, bool, float, float]:
+    def check_proximity_t(self, other: Flight, ts: int, alt_min_dif : int = 0, alt_max_dif = ALT_THRESHOLD_1000, step : int = 1, speed :float = 1 ) -> Tuple[bool, bool, str, str, bool, float, float]:
         
         """
         Check if a flight interacts (is proximate) with another
         Args:
             other: the flight to check against
-            seconds : timestamp to use as reference
+            t : timestamp to use as reference
             alt_min_dif : smallest altitute threshold to consider
-            alt_max_dif : smallest altitute threshold to consider
+            alt_max_dif : biggest altitute threshold to consider
         
         Returns tuple with 5 values:
             True if there's a vertical interaction, False otherwise
@@ -906,36 +906,43 @@ class Flight:
         """
 
         # define default results        
+        
+        # initialize vertical pair for 15 min. longitudinal separation
         vertical_pair = False
+        # initialize vertical pair for 120 NM longitudinal separation
+        vertical_pair_120 = False
+        
         lateral_pair = False
         overlap = False        
         direction = None        
         
         longitudinal_separation_nm = DEFAULT_LONGITUDINAL_SEP_NM
         longitudinal_separation_time = DEFAULT_LONGITUDINAL_SEP_TIME
-        lateral_separation = 100
+        
+        lateral_separation = DEFAULT_LATERAL_SEP
 
         # make sure both flights have interpolated reports for the required timestamp
         # should not be needed, since this function should be called only after checking that both flights have interpolated reports inside RVSM at the required timestamp
         
-        if t in self.interpolated and t in other.interpolated:
+        if ts in self.interpolated and ts in other.interpolated:
             # position of this flight at the reference timestamp
-            p1 = self.interpolated[t]
+            p1 = self.interpolated[ts]
             # altitude in feet of flight_i at the reference timestamp
             alt1: float = p1[2] * 100
             # position of the other flight at the reference timestamp
-            p2 = other.interpolated[t]
+            p2 = other.interpolated[ts]
             # altitude in feet of flight_j at the reference timestamp 
             alt2: float = p2[2] * 100
             
             # calculate the relative angle between both flights, and caracterize them according to
             # PANS-ATM/DOC 7030/NAT DOC 008 - Application of separation minima
             angle = heading_diff(p1[3], p2[3])
+            
+            #TODO apply here the new direction classification based on the updated traffic types
             direction = SAMEDIR if angle < 90.0 else OPPOSITE
 
-            # are both flights inside HLA ?
-            # 300' threshold
-            if 28700 <= alt1 <= 41300 and 28700 <= alt2 <= 41300:
+            # to change the threshold for HLA, use HLA_LOW and HLA_HIGH defined in init.py
+            if HLA_LOW <= alt1 <= HLA_HIGH and HLA_LOW <= alt2 <= HLA_HIGH:
                 # calculate difference between flight levels
                 dfl = round(abs(alt1 - alt2), 0)
 
@@ -949,8 +956,9 @@ class Flight:
                     # overlap_long = longitudinal distance between the pair is less than the sum of the both flight's length
                     
                     # Calculate the track-to-track distance between both flights, in NM,
-                    distance_p1p2 = inverse_haversine(lat1 = p1[0], lon1=p1[1], lat2 = p2[0], lon2 = p2[1])[0] / 1852
+                    distance_p1p2 = inverse_haversine(lat1 = p1[0], lon1 = p1[1], lat2 = p2[0], lon2 = p2[1])[0] / 1852
                     
+                    # if using geo_wgs84.py
                     # calc1 = Geodesic.WGS84.Inverse(lat1 = p1[0], lon1=p1[1], lat2 = p2[0], lon2 = p2[1])
                     # distance_p1p2 = calc1["s12"] / 1852
 
@@ -962,7 +970,8 @@ class Flight:
                     # check if the pair is closer than the biggest dimension of the two aircraft
                     # dimensions_nm = max(self.max_dimension, other.max_dimension)/1852
                     # dimensions_nm = 5 # try with 1NM
-                    # if  dimensions_nm >= distance_p1p2:
+                    # if dimensions_nm >= distance_p1p2:
+                    #   pass
                     
                     # review the calculation of the overlap distance
                     overlap_distance = speed / 3600 * step
@@ -990,7 +999,6 @@ class Flight:
                     # protected airspace for flight1
                     box_i = get_bounding_box_haversine(p = p1, lateral=lateral_separation, time_ahead = longitudinal_separation_time, time_behind = longitudinal_separation_time)
                     box_i_120 = get_bounding_box_haversine(p = p1, lateral=lateral_separation, dist = longitudinal_separation_nm, time_ahead = None, time_behind = None)
-
                     
                     # protected airspace for flight2
                     box_j = get_bounding_box_haversine(p = p2, lateral=lateral_separation, time_ahead = longitudinal_separation_time, time_behind = longitudinal_separation_time)
@@ -998,12 +1006,11 @@ class Flight:
                     
                     # flag to indicate if the flights are separated by 1000', will be used for vertical occupancy
                     # one_fl = True if 900 <= dfl <= alt_max_dif else False
-
-                    one_fl = True if 400 <= dfl <= alt_max_dif else False
+                    one_fl = True if alt_min_dif <= dfl <= alt_max_dif else False
                     
                     # Determine if proximate vertical pairs
                     # vertical_pair = False
-                    
+                   
                     if one_fl:
                         """
                         # check for track to track distance,
@@ -1021,15 +1028,17 @@ class Flight:
                             #print("vertical pair - {} @ {} seconds - {} at {} x {} at {}".format(vertical_pair, t, self.callsign, self.interpolated[t][2], other.callsign, other.interpolated[t][2]))
                         """
                         
-                        # determine if it is a vertical pair, using the protected airspace boxes
+                        # Determine if the flights are vertical pairs using the protected airspace boxes
+                        # for both longitudinal separation criteria (120NM and 15 min.)
                         vertical_pair = is_fix_inside(lat=p2[0], long=p2[1], fix_list=box_i) or is_fix_inside(lat=p1[0], long=p1[1], fix_list=box_j)
-
+                        vertical_pair_120 = is_fix_inside(lat=p2[0], long=p2[1], fix_list=box_i_120) or is_fix_inside(lat=p1[0], long=p1[1], fix_list=box_j_120)
+                    
                     else:
                         # not a vertical pair
                         # print("Not a vertical pair")
                         pass
 
-                    # if the flights are at the same altitude, determine lateral proximity
+                    # if the flights are at the same altitude, determine lateral and longitudinal proximity (v1.0)
                     if dfl <= ALT_THRESHOLD_SAME:
 
                         # TODO determine if the flights are a longitudinal pair,
@@ -1046,58 +1055,7 @@ class Flight:
 
                         # longitudinal_distance = max(p1[4], p2[4]) * 15/60
                         #box_i_100 = get_bounding_box(p=p1, lateral=LATERAL_SEPARATION_HB, dist = distance_i, behind = distance_i)
-                        lateral_pair = is_fix_inside(lat=p2[0], long=p2[1], fix_list=box_i)
-
-                        if not lateral_pair:
-                            lateral_pair = is_fix_inside(lat=p1[0], long=p1[1], fix_list=box_j)
-
-                        """ New method, to be reviewed, to determine if the flights are lateral pairs,
-                        box_i_27 = get_bounding_box(p=p1, lateral=27, dist = longitudinal_i, behind = longitudinal_i)
-                        box_i_33 = get_bounding_box(p=p1, lateral=33, dist = longitudinal_i, behind = longitudinal_i)
-                        lateral_pair = (not is_fix_inside(lat=p2[0], long=p2[1], fix_list=box_i_27) and is_fix_inside(lat=p2[0], long=p2[1], fix_list=box_i_33))
-
-                        if not lateral_pair:
-                            longitudinal_j = 15/60 * p2[4]
-                            box_j_27 = get_bounding_box(p=p2, lateral=27, dist = longitudinal_j, behind = longitudinal_j)
-                            box_j_33 = get_bounding_box(p=p2, lateral=33, dist = longitudinal_j, behind = longitudinal_j)
-                            lateral_pair =  (not is_fix_inside(lat=p1[0], long=p1[1], fix_list=box_j_27) and is_fix_inside(lat=p1[0], long=p1[1], fix_list=box_j_33))
-
-                            if not lateral_pair:
-                                box_i_56 = get_bounding_box(p=p1, lateral=56, dist = longitudinal_i, behind = longitudinal_i)
-                                box_i_63 = get_bounding_box(p=p1, lateral=63, dist = longitudinal_i, behind = longitudinal_i)
-                                lateral_pair = (not is_fix_inside(lat=p2[0], long=p2[1], fix_list=box_i_56) and is_fix_inside(lat=p2[0], long=p2[1], fix_list=box_i_63))
-
-                                if not lateral_pair:
-                                    box_j_56 = get_bounding_box(p=p1, lateral=56, dist = longitudinal_j, behind = longitudinal_j)
-                                    box_j_63 = get_bounding_box(p=p1, lateral=63, dist = longitudinal_j, behind = longitudinal_j)
-                                    lateral_pair = (not is_fix_inside(lat=p1[0], long=p1[1], fix_list=box_j_56) and is_fix_inside(lat=p2[0], long=p2[1], fix_list=box_j_63))
-                                                
-                        if lateral_pair:
-                            # make sure the flights are paraller
-                            pass    
-                        
-                        # calculate cross track distance from P2 to the segment of P1
-                        distance_x_p2p1, lat_p2p1, long_p2p1, distance_a_p2p1 =x_track_fix(p1[0], p1[1], p1[5], p1[6], p2[0], p2[1])
-                        distance_x_p2p1 = abs(distance_x_p2p1 / 1852)
-
-                        # calculate cross track distances from P1 to the segment of P2
-                        distance_x_p1p2, lat_p1p2, long_p1p2, distance_a_p1p2 = x_track_fix(p2[0], p2[1], p2[5], p2[6], p1[0], p1[1])
-                        distance_x_p1p2 = abs(distance_x_p1p2 / 1852)
-                        # distance_a_p1p2 /= 1852
-                        
-
-                        # if the flights are at LAT_SEP plus margin
-                        # latsep = LAT_SEP[precision][lateral]
-                        latsep = lateral_separation
-
-                        lateral_margin = 3
-                        
-                        # makes sure that the flights are parallel
-                        # reevaluate the conditions for parallel pairs, maybe add a margin to the angle condition or bigger buffer to the distance condition
-                        if (latsep - lateral_margin < distance_x_p2p1 < latsep + lateral_margin) and (latsep - lateral_margin < distance_x_p1p2 < latsep + lateral_margin):
-                            # check if flight1 is inside the protected airspace of flight2, or viceversa
-                            lateral_pair = is_fix_inside(lat=p2[0], long=p2[1], fix_list=box_i) or is_fix_inside(lat=p1[0], long=p1[1], fix_list=box_j)
-                        """ 
+                        lateral_pair = is_fix_inside(lat=p2[0], long=p2[1], fix_list=box_i) or is_fix_inside(lat=p1[0], long=p1[1], fix_list=box_j)
 
                 else:
                     # print("MORE THAN 1000 FEET BETWEEN THE FLIGHTS ", self.callsign, " e ", other.callsign)
@@ -1112,4 +1070,53 @@ class Flight:
         if not vertical_pair and overlap:
             pass
 
-        return vertical_pair, lateral_pair, direction, overlap, 120, 100 # longitudinal_separation, lateral_separation
+        return vertical_pair, lateral_pair, direction, overlap, longitudinal_separation_nm, lateral_separation #, longitudinal_separation_time
+
+
+    """ # New method, to be reviewed, to determine if the flights are lateral pairs,
+        box_i_27 = get_bounding_box(p=p1, lateral=27, dist = longitudinal_i, behind = longitudinal_i)
+        box_i_33 = get_bounding_box(p=p1, lateral=33, dist = longitudinal_i, behind = longitudinal_i)
+        lateral_pair = (not is_fix_inside(lat=p2[0], long=p2[1], fix_list=box_i_27) and is_fix_inside(lat=p2[0], long=p2[1], fix_list=box_i_33))
+
+        if not lateral_pair:
+            longitudinal_j = 15/60 * p2[4]
+            box_j_27 = get_bounding_box(p=p2, lateral=27, dist = longitudinal_j, behind = longitudinal_j)
+            box_j_33 = get_bounding_box(p=p2, lateral=33, dist = longitudinal_j, behind = longitudinal_j)
+            lateral_pair =  (not is_fix_inside(lat=p1[0], long=p1[1], fix_list=box_j_27) and is_fix_inside(lat=p1[0], long=p1[1], fix_list=box_j_33))
+
+            if not lateral_pair:
+                box_i_56 = get_bounding_box(p=p1, lateral=56, dist = longitudinal_i, behind = longitudinal_i)
+                box_i_63 = get_bounding_box(p=p1, lateral=63, dist = longitudinal_i, behind = longitudinal_i)
+                lateral_pair = (not is_fix_inside(lat=p2[0], long=p2[1], fix_list=box_i_56) and is_fix_inside(lat=p2[0], long=p2[1], fix_list=box_i_63))
+
+                if not lateral_pair:
+                    box_j_56 = get_bounding_box(p=p1, lateral=56, dist = longitudinal_j, behind = longitudinal_j)
+                    box_j_63 = get_bounding_box(p=p1, lateral=63, dist = longitudinal_j, behind = longitudinal_j)
+                    lateral_pair = (not is_fix_inside(lat=p1[0], long=p1[1], fix_list=box_j_56) and is_fix_inside(lat=p2[0], long=p2[1], fix_list=box_j_63))
+                                
+        if lateral_pair:
+            # make sure the flights are paraller
+            pass    
+        
+        # calculate cross track distance from P2 to the segment of P1
+        distance_x_p2p1, lat_p2p1, long_p2p1, distance_a_p2p1 =x_track_fix(p1[0], p1[1], p1[5], p1[6], p2[0], p2[1])
+        distance_x_p2p1 = abs(distance_x_p2p1 / 1852)
+
+        # calculate cross track distances from P1 to the segment of P2
+        distance_x_p1p2, lat_p1p2, long_p1p2, distance_a_p1p2 = x_track_fix(p2[0], p2[1], p2[5], p2[6], p1[0], p1[1])
+        distance_x_p1p2 = abs(distance_x_p1p2 / 1852)
+        # distance_a_p1p2 /= 1852
+        
+
+        # if the flights are at LAT_SEP plus margin
+        # latsep = LAT_SEP[precision][lateral]
+        latsep = lateral_separation
+
+        lateral_margin = 3
+        
+        # makes sure that the flights are parallel
+        # reevaluate the conditions for parallel pairs, maybe add a margin to the angle condition or bigger buffer to the distance condition
+        if (latsep - lateral_margin < distance_x_p2p1 < latsep + lateral_margin) and (latsep - lateral_margin < distance_x_p1p2 < latsep + lateral_margin):
+            # check if flight1 is inside the protected airspace of flight2, or viceversa
+            lateral_pair = is_fix_inside(lat=p2[0], long=p2[1], fix_list=box_i) or is_fix_inside(lat=p1[0], long=p1[1], fix_list=box_j)
+        """ 

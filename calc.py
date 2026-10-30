@@ -244,8 +244,10 @@ if __name__ == '__main__':
     ALT_MAX = 1100 # maximum altitude difference to consider for the calculations, in feet
     calc_values_ij.iterations = 0
 
-   
+    # """ remove the hashtag to comment out the plotting section if needed
+    # FOX process v1.0
     # Plot the routes of all usable flights using Lambert Conformal Conic projection
+    
     fig = plt.figure(figsize=(10, 6))
     ax = plt.axes(projection=ccrs.LambertConformal(central_longitude=-30, standard_parallels=(17, 51)))
     for flight in flights:
@@ -258,7 +260,7 @@ if __name__ == '__main__':
     ax.gridlines(draw_labels=True)
     plt.tight_layout()
     plt.show()
-  
+    # """ remove the hashtag to comment out the plotting section if needed
 
     # interval between successive interpolated reports
     TIME_STEP = 1
@@ -307,7 +309,7 @@ if __name__ == '__main__':
                     # record results to save later on
                     # if True or CRij_lateral > 1 or CRij_vertical>1 or CRij_vertical <0 or Pz > 1 or py0 >= 1:
                         
-                    track = RANDOM if flight_i.ots == "0" and flight_j.ots == "0" else OTS if flight_i.ots == "1" and flight_j.ots == "1" else MIX
+                    track = RANDOM if (flight_i.ots == "0" and flight_j.ots == "0") else OTS if (flight_i.ots == "1" and flight_j.ots == "1") else MIX
     
                     pairs.loc[len(pairs)]=[TRAFFIC_TYPE[direction], TRACK[track], flight_i.id, flight_i.callsign, flight_i.elapsed_time_surveillance, flight_j.id, flight_j.callsign, flight_j.elapsed_time_surveillance, dt.fromtimestamp(start), dt.fromtimestamp(finish),
                         dt.fromtimestamp(prox_start),dt.fromtimestamp(prox_finish), ave_rel_speed[0], ave_rel_speed[1], ave_rel_speed[2],
@@ -384,7 +386,6 @@ if __name__ == '__main__':
     results.to_csv(results_filename,sep=',', decimal='.' , index=False)
     print(results)
 
-        
     
 if REDIRECT_TO_FILE:
     sys.stdout.close()

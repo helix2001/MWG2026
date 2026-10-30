@@ -5,7 +5,7 @@ from os import path
 import pickle
 from flight import Flight, get_sub_field
 from utils import save_flights, try_float, try_int, load_flights
-from module.geo import xtrack_haversine, mod # x_track_fix, mod
+from module.geo import x_track_haversine, mod # x_track_fix, mod
 from mwg import *
 from datetime import datetime as dt
 from dateutil.parser import parse
@@ -255,7 +255,7 @@ def import_flights(filename_csv: str = '', output_obj:str = "", output_res:str='
                                     if timestamp_bin >= p1.timestamp_bin and timestamp_bin< p2.timestamp_bin:
                                         # calculate the CTE for this position report
                                         # xdist, proj_lat, proj_lon, adist = x_track_fix(p1.lat, p1.long, p2.lat, p2.long, lat, lon)
-                                        xtrackdistance, proj_lat, proj_lon, along_distance = xtrack_haversine(p1.lat, p1.long, p2.lat, p2.long, lat, lon)
+                                        xtrackdistance, proj_lat, proj_lon, along_distance = x_track_haversine(p1.lat, p1.long, p2.lat, p2.long, lat, lon)
                                         # calculate the slop value in NM
                                         cte = round(xtrackdistance / 1852, ndigits=3)
                                         break

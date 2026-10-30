@@ -1,16 +1,17 @@
+# Geodesic and Haversine calculations for geographic coordinates
+# Provides functions for direct and inverse geodesic calculations using the Haversine formulas.
+# Implements geodesic calculations using spherical and mean Earth models.
+
+# as per MWG FOX PROCESS Requirements v1.0, Paragraph 1.2
+# Adds an error constant for latitude/longitude/distances/bearings calculations of up to 0.3%
+
+# removed all refere
 from math import radians, acos, asin, sin, cos, sqrt, pi, degrees, atan2, floor, trunc, pow, atan
+import math
 from string import digits
 import sys
 from turtle import distance
-from geographiclib.geodesic import Geodesic
 import numpy as np
-
-from module import DEFAULT_LONGITUDINAL_SEP_M
-
-EPS = sys.float_info.epsilon
-
-# spherical Earth
-SPHERICAL_RADIUS = 180 * 60 / pi * 1852
 
 # WGS84 semimajor axis 
 A = 6378137.0
@@ -18,27 +19,23 @@ A = 6378137.0
 # WGS84 semiminor axis;
 B = 6356752.3142
 
+ERROR_CONSTANT = 0.003          # 0.3% error for latitude/longitude/distances/bearings calculations
+EPS = sys.float_info.epsilon    # machine epsilon for floating point comparisons
+
+# spherical Earth
+SPHERICAL_RADIUS = 180 * 60 / pi * 1852
+
 # WGS84 mean radius, calculated as the radius of a sphere with the same surface area as the ellipsoid
+# returns more accurate results for geodesic calculations compared to the WGS84 ellipsoid model
 MEAN_RADIUS = 6372008.8
 
-# mean earth radius between 0º lat and 50º lat
+# mean earth radius between 0º lat and 50º lat, returns less accurate results for higher latitudes
+# this logic could be used to calculate a more accurate mean radius for specific latitude ranges
+
 MEAN_RADIUS_0_50 = 6377890.41
 
-# flattening
-F = 1/298.257223563
-
-# inverse flattening
-IF = 298.257223563                     
-
-# square of WGS84 1st eccentricity
-# E_SQR = 1 - (B/A)^2
-E_SQR : float = 0.00669437999014
-
-# square of WGS84 2nd eccentricity
-E2_SQR : float = 6.73949674228E-3
-
-DEGTORAD = 2.0 * pi / 360.0
-RADTODEG = 1 / DEGTORAD
+# DEGTORAD = 2.0 * pi / 360.0
+# RADTODEG = 1 / DEGTORAD
 
 """
 convert distances from meters to nautical miles
@@ -61,9 +58,30 @@ def mod(y: float, x: float) -> float:
 # already optimized
 
 def heading_diff(h1:float, h2:float)->float:
-    h1 = h1 * DEGTORAD
-    h2 = h2 * DEGTORAD    
-    return round(acos(round( cos (h1) * cos(h2) +sin(h1) * sin(h2),5) ) * RADTODEG, 3)    
+    h1 = radians(h1)
+    h2 = radians(h2)
+
+    return round(degrees(acos(( cos (h1) * cos(h2) +sin(h1) * sin(h2)) )), 3)
+
+# calculates the mean earth radius for a given latitude based on the WGS84 ellipsoid model
+
+# TODO
+# evaluate if this formula provides sufficient accuracy for all latitude ranges,
+# especially near the poles where the curvature of the Earth changes more rapidly.
+# and if its more accurate than using a single value for the mean earth radius across all latitudes.
+
+def mean_radius_lat(lat: float) -> float:
+    """
+    returns the mean earth radius for a given latitude, which should be in degrees
+    """
+    try:
+        lat = radians(abs(lat))
+        result = sqrt(((A**2 * cos(lat))**2 + (B**2 * sin(lat))**2)/ ((A * cos(lat))**2 + (B * sin(lat))**2))
+    
+    except Exception as e:
+        result = None
+
+    return result
 
 # given lat/lon, bearing and distance, determine the point lat/lon 
 def direct_haversine(lat1:float, lon1:float, bearing:float, distance:float) -> tuple[float|None,float|None, float|None]:
@@ -74,7 +92,7 @@ def direct_haversine(lat1:float, lon1:float, bearing:float, distance:float) -> t
     """
     try:
         # calculate the destination point, considering the earth as a sphere
-        lat1, lon1, bearing, distance = map(lambda a : a * DEGTORAD,[lat1, -lon1, bearing, distance/1852/60])
+        lat1, lon1, bearing, distance = map(lambda a : radians(a),[lat1, -lon1, bearing, distance/1852/60])
         lat = asin(sin(lat1)*cos(distance)+cos(lat1)*sin(distance)*cos(bearing))
         dlon = atan2(sin(bearing)*sin(distance)*cos(lat1),cos(distance)-sin(lat1)*sin(lat))
         lon = mod(lon1-dlon +pi, 2*pi )-pi
@@ -88,7 +106,7 @@ def direct_haversine(lat1:float, lon1:float, bearing:float, distance:float) -> t
 
         # calculate the results in degrees
         # if we implement the direct calculations, will it be faster ?
-        lat, lon, final_bearing = map(lambda a : a * RADTODEG,[lat,-lon,final_bearing])
+        lat, lon, final_bearing = map(lambda a : degrees(a),[lat,-lon,final_bearing])
         # final_bearing = round(mod (final_bearing, 360), 3)
 
     # for debugging purposes
@@ -106,14 +124,14 @@ def inverse_haversine(lat1:float, lon1:float, lat2:float, lon2:float) -> tuple[f
     returns the distance in meters and the initial bearing in degrees, or None if any error occured
     """
     try:
-        lat1, lon1, lat2, lon2 = map(lambda a : a * DEGTORAD,[lat1, -lon1, lat2, -lon2])
+        lat1, lon1, lat2, lon2 = map(lambda a : radians(a),[lat1, -lon1, lat2, -lon2])
         dlon = lon2 - lon1
         dlat = lat2 - lat1
         a = sin(dlat/2)**2 + cos(lat1)*cos(lat2)*sin(dlon/2)**2
         c = 2 * asin(sqrt(a))
         distance = c * MEAN_RADIUS        
-        bearing = mod(atan2(sin(-dlon)*cos(lat2),cos(lat1)*sin(lat2)-sin(lat1)*cos(lat2)*cos(-dlon)) * RADTODEG, 360)
-        bearing_reverse = mod(atan2(sin(dlon)*cos(lat1),cos(lat2)*sin(lat1)-sin(lat2)*cos(lat1)*cos(dlon)) * RADTODEG, 360)
+        bearing = mod(degrees(atan2(sin(-dlon)*cos(lat2),cos(lat1)*sin(lat2)-sin(lat1)*cos(lat2)*cos(-dlon))), 360)
+        bearing_reverse = mod(degrees(atan2(sin(dlon)*cos(lat1),cos(lat2)*sin(lat1)-sin(lat2)*cos(lat1)*cos(dlon))), 360)
 
     # for debugging purposes
     except Exception as e:
@@ -145,7 +163,7 @@ def bearing_haversine(lat1: float, lon1: float, lat2: float, lon2: float, conver
         b = mod(atan2(sin(lon2 - lon1) * cos(lat2), cos(lat1) * sin(lat2) - sin(lat1) * cos(lat2) * cos(lon2 - lon1)),
                 2 * pi)
     # returns initial bearing from (lat1,lon1) to (lat2,lon2), in degrees
-    return b * RADTODEG
+    return degrees(b)
 
 def distance_haversine(lat1: float, lon1: float, lat2: float, lon2: float, radius: float = MEAN_RADIUS) -> float:
     """
@@ -319,76 +337,16 @@ def latlong_to_str_dec(lat: float, lon: float) -> str:
     return "{:0>2}{:0>2}{:05.2f}{}{:0>3}{:0>2}{:05.2f}{}".\
         format(lat_deg, lat_min, lat_sec, lat_char, lon_deg, lon_min, lon_sec, lon_char)
 
-# The results from following functions where verified comparing
-# results with NOAA tools available at https://geodesy.noaa.gov/NCAT/
-
-def latlong_xyz(lat : float, long:float , h : float = 0) -> tuple [float, float, float]:
-    """
-    Converts lat, long and height above the ellipsoid to cartesian coordinates.
-    Uses WGS84 parameters
-    Args:
-        lat, long in decimal degrees
-        h in meters above the ellipsoid
-    """
-    # convert lat,long to radians
-    lat, long = map (radians,[lat,long])
-    # radius of curvature in prime vertical 
-    rc : float = A / sqrt(1.0-E_SQR*sin(lat)*sin(lat));   
-    
-    return (rc+h)*cos(lat)*cos(long), (rc+h)*cos(lat)*sin(long), (rc*(1-E_SQR)+h) * sin(lat)
-    #h*sin(lat)
-
-def xyz_latlong (x:float, y:float, z : float) -> tuple [float, float,float]:
-    """
-    Converts from cartesian coordinates x,y,z to lat, long, height above the ellipsoid.
-    Uses WGS84 parameters
-    Args:
-        x,y,z: cartesian coordinates
-    Returns:
-        lat,long, h: Lat, long and height above the ellipsoid
-    """
-    # get correct sign for latitude
-    b1 = -B if z < 0.0 else B
-    r = sqrt (x**2+y**2)
-
-    # compute intermediate values for latitude
-    e = (b1 * z - (A**2-b1**2))/(A*r)
-    f1= (b1 * z + (A**2-b1**2))/(A*r)
-    
-    # find solution to t^4 + 2*E*t^3 + 2*F*t - 1 = 0
-    p = (4 / 3) * (e*f1 + 1)
-    q = 2 * (e**2 - f1**2)
-    d = p**3 + q**2
-    if d >= 0.0:
-        v = (pow((sqrt(d)-q),(1/3))-pow((sqrt(d)+q),(1/3)))
-    else:
-        v= 2 * sqrt( -p )* cos( acos( q/(p * sqrt( -p )) ) / 3 )
-
-    # improve v
-    if (v**2<abs(p)):
-        v = -(v*v*v + 2*q) / (3*p)
-    g = (sqrt( e*e + v ) + e) / 2
-    t = sqrt( g*g  + (f1 - v*g)/(2*g - e) ) - g
-
-    # latitude
-    lat =atan( (A*(1 - t**2)) / (2*b1*t) )
-    # height
-    h = (r - A*t)*cos( lat ) + (z - B)*sin(lat);
-    # compute longitude east of Greenwich
-    long = atan2(y,x);
-
-    return round(degrees(lat),10) , round(degrees(long),10), round(h,3)
-
 # check if a point is on a great circle
 def point_on_gc(lat1:float,long1:float,lat2:float,long2:float, latx:float, longx:float) -> bool:
     result =  False
-    # check if the computations are faster without the special cases
+    # TODO check if the computations are faster without the special cases
     if long1 == long2 and long1 == longx:
         result = True
     elif  long1 == long2 and long1 != longx:
         result =False
     else:
-        lat1, long1, lat2, long2, latx, longx = map(lambda a : a * DEGTORAD,[lat1,long1,lat2,long2,latx,longx])
+        lat1, long1, lat2, long2, latx, longx = map(lambda a : radians(a),[lat1,long1,lat2,long2,latx,longx])
         newlat : float = atan((sin(lat1)*cos(lat2)*sin(longx-long2)-sin(lat2)*cos(lat1)*sin(longx-long1))\
             /(cos(lat1) * cos(lat2) * sin(long1 - long2)))
 
@@ -396,6 +354,7 @@ def point_on_gc(lat1:float,long1:float,lat2:float,long2:float, latx:float, longx
         # print(round(degrees(abs(newlat-latx)),4)*1852) # for debug only
         # 0.0002 is an arbitrary value, corresponds to less than 37.5 cm
         result = round(degrees(abs(newlat-latx)),0) == 0
+    
     return result
 
 def x_track_haversine(lat_1 :float, long_1 : float ,lat_2 : float, long_2:float, lat_x : float,long_x :float, convert:bool = False) -> tuple[float,float, float, float]:
@@ -418,7 +377,7 @@ def x_track_haversine(lat_1 :float, long_1 : float ,lat_2 : float, long_2:float,
     elif (lat_2 == lat_x and long_2 == long_x):
         result = 0.0, lat_2, long_2, 0.0
     else:   
-        lat1, lon1, lat2, lon2, latx, lonx = map(lambda a : a * DEGTORAD,[lat_1,long_1,lat_2,long_2,lat_x,long_x])
+        lat1, lon1, lat2, lon2, latx, lonx = map(lambda a : radians(a) ,[lat_1,long_1,lat_2,long_2,lat_x,long_x])
         d1x = 2*asin(sqrt((sin((lat1-latx)/2))**2 + cos(lat1)*cos(latx)*(sin((lon1-lonx)/2))**2))
     
         if abs(lat_1-lat_2)<= EPS and abs(long_1-long_2)<= EPS:
@@ -445,7 +404,7 @@ def x_track_haversine(lat_1 :float, long_1 : float ,lat_2 : float, long_2:float,
             r = direct_haversine(lat1, lon1, bearing, adist)
 
             # distance positive, right of track, negative, left of track
-            result = xdist * MEAN_RADIUS, lat * RADTODEG, -lon * RADTODEG, adist * MEAN_RADIUS
+            result = xdist * MEAN_RADIUS, degrees(lat), -degrees(lon), adist * MEAN_RADIUS
     
     return result
 
@@ -471,7 +430,7 @@ def is_fix_inside(lat:float, long:float, fix_list:list) -> bool:
         for i in range(0,len(temp)-1):
             # calculates the distance from the fix to the segment
             r = x_track_haversine(lat_1 = temp[i][0], long_1 = temp[i][1], lat_2 = temp[i+1][0], long_2 = temp[i+1][1], lat_x=lat, long_x=long)
-            # if the distance is negative, the fix to the left of the segment,
+            # if the distance is negative, the fix is to the left of the segment,
             # putting it oustide of the polygon
             if r[0]<0.0 :
                 result = False
@@ -517,10 +476,8 @@ def get_bounding_box_haversine(p : list, lateral : int = 100, time_ahead : int =
         # calculate distance behind from time_behind and speed
         distance_behind = abs(time_behind) * speed
     else:
-        distance_ahead = dist * 1852 # 120
-        distance_behind = dist * 1852 # 120
-        # distance_ahead = DEFAULT_LONGITUDINAL_SEP_M
-        # distance_behind = DEFAULT_LONGITUDINAL_SEP_M
+        distance_ahead = dist * 1852 # convert NM to meters
+        distance_behind = dist * 1852 # convert NM to meters
 
     # calculate the point behind, if needed
     if distance_behind > 0.0:
@@ -551,6 +508,4 @@ def get_bounding_box_haversine(p : list, lateral : int = 100, time_ahead : int =
 
 if __name__ == "__main__":
     # test the functions
-    result = x_track_haversine(45, -20.0, 45.0, -40.0, 44.0, -25.0)
-    print(result)
-    print(latlong_to_str_dec(result[1],result[2]))
+    pass
