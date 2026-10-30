@@ -54,8 +54,9 @@ SAMPLE_FILENAME = 'data/canada_sample.csv'
 FILENAME = DRIVE+'\\'+ SAMPLE_FILENAME
 """
 
-# FILENAME = 'NAVP_2025-08-01.csv'
-# FILENAME = r'E:\MWG_data\Canada_TBCRM_Data_Aug7_2025.csv'
+# FOX process v1.0
+# change this to the appropriate filename for processing
+# This particular file contains only 2 parallel flights, for testing purposes
 FILENAME = 'NAVP_LATERAL.csv'
 
 # filter contains a list of flight ids to process
@@ -93,11 +94,10 @@ def setup_filenames():
     return filename, outfile, source
 
 if __name__ == '__main__':
-
-    filename, outfile, source = setup_filenames()
-    
+    filename, outfile, source = setup_filenames()    
+    # To control the frequency of position reports used for different sources, 
     # use the 5th position report for the UK, CANADA and ICELAND (surveillance),
-    # and all position reports for NY and Santa Maria
+    # and all position reports for NY and Santa Maria (ADS-C)
     if source in (NEWYORK,PORTUGAL):
         step = 1
     else:
