@@ -257,7 +257,6 @@ if __name__ == '__main__':
     # Plot the routes of all usable flights using Lambert Conformal Conic projection
     
     if DRAW_MAP:
-        print('Drawing flight routes map...')
         fig = plt.figure(figsize=(10, 6))
         ax = plt.axes(projection=ccrs.LambertConformal(central_longitude=-30, standard_parallels=(17, 51)))
         for flight in flights:
