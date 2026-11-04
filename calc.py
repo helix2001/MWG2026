@@ -7,6 +7,7 @@ from datetime import datetime as dt
 # from module import *
 from time import perf_counter
 from functools import reduce
+
 print ('import pandas !')
 import pandas as pd
 print ('import numpy !')
@@ -38,6 +39,9 @@ print('import sys')
 import sys
 print ('done imports !')
 
+#   Flag to control whether to draw the map or not
+DRAW_MAP = True
+
 # default report step number of reports
 REPORT_STEP = 5
 
@@ -57,7 +61,9 @@ FILENAME = DRIVE+'\\'+ SAMPLE_FILENAME
 # FOX process v1.0
 # change this to the appropriate filename for processing
 # This particular file contains only 2 parallel flights, for testing purposes
+
 FILENAME = 'NAVP_LATERAL.csv'
+FILENAME = './data/NAVP_2025-08-01.csv'
 
 # filter contains a list of flight ids to process
 # filter = [1790943,1790923,1790983,1790982, 1790996] 
@@ -83,6 +89,8 @@ def setup_filenames():
     elif 'PORTUGAL_' in f:
         source = PORTUGAL
     elif 'NAVP' in f:
+        source = PORTUGAL
+    elif 'lppo_' in f:
         source = PORTUGAL
     elif 'ZNY_' in f:
         source = NEWYORK
@@ -153,9 +161,9 @@ if __name__ == '__main__':
             
             flight.set_min_max_fl()
 
-            if flight.max_fl < 288.0:
+            if flight.max_fl < 287.0:
                 print(f'\tThe flight was always below RVSM.')
-            if flight.min_fl>412.0:
+            if flight.min_fl>413.0:
                 print(f'\tThe flight was always above RVSM.')  
     
     pd.DataFrame(flight_csv,columns=columns).to_csv('flights.csv', index=False, sep=';')
@@ -248,19 +256,21 @@ if __name__ == '__main__':
     # FOX process v1.0
     # Plot the routes of all usable flights using Lambert Conformal Conic projection
     
-    fig = plt.figure(figsize=(10, 6))
-    ax = plt.axes(projection=ccrs.LambertConformal(central_longitude=-30, standard_parallels=(17, 51)))
-    for flight in flights:
-        if flight.interpolated and len(flight.interpolated) > 1:
-            lats = [v[0] for v in flight.interpolated.values()]
-            lons = [v[1] for v in flight.interpolated.values()]
-            ax.plot(lons, lats,  alpha=0.7, transform=ccrs.PlateCarree())
-    ax.set_title("Flight Routes (Interpolated) - Lambert Conformal Conic")
-    ax.legend(loc="best", fontsize="medium", ncol=2)
-    ax.gridlines(draw_labels=True)
-    plt.tight_layout()
-    plt.show()
-    # """ remove the hashtag to comment out the plotting section if needed
+    if DRAW_MAP:
+        print('Drawing flight routes map...')
+        fig = plt.figure(figsize=(10, 6))
+        ax = plt.axes(projection=ccrs.LambertConformal(central_longitude=-30, standard_parallels=(17, 51)))
+        for flight in flights:
+            if flight.interpolated and len(flight.interpolated) > 1:
+                lats = [v[0] for v in flight.interpolated.values()]
+                lons = [v[1] for v in flight.interpolated.values()]
+                ax.plot(lons, lats,  alpha=0.7, transform=ccrs.PlateCarree())
+        ax.set_title("Flight Routes (Interpolated) - Lambert Conformal Conic")
+        ax.legend(loc="best", fontsize="medium", ncol=2)
+        ax.gridlines(draw_labels=True)
+        plt.tight_layout()
+        plt.show()
+        # """ remove the hashtag to comment out the plotting section if needed
 
     # interval between successive interpolated reports
     TIME_STEP = 1

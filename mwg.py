@@ -161,6 +161,7 @@ def calc_values_ij(i:Flight, j : Flight, step : int = 1, alt_min = 0, alt_max = 
     CRij_overlap = 0.0
     CRij_vertical = 0.0
     CRij_lateral = 0.0
+    CRij_lateral_t = 0.0
 
     # Occupancy values for the pair, in the 3 dimensions, calculated at the end of the method, using the proximate times calculated at every second
     occupancy = 0.0
@@ -195,8 +196,10 @@ def calc_values_ij(i:Flight, j : Flight, step : int = 1, alt_min = 0, alt_max = 
         pd_i = pd.DataFrame(i.interpolated.values(), columns = ['Second','Latitude','Longitude','GroundTrack','GroundSpeed','Altitude','VerticalRate','CTE'])
         pd_j = pd.DataFrame(j.interpolated.values(), columns = ['Second','Latitude','Longitude','GroundTrack','GroundSpeed','Altitude','VerticalRate','CTE'])
 
-        pd_i.to_csv(i.callsign+'.csv',sep=';',decimal=',')
-        pd_j.to_csv(j.callsign+'.csv',sep=';',decimal=',')
+        # uncommment to get the interpolated data for each flight as a CSV file
+        
+        # pd_i.to_csv(i.callsign+'.csv',sep=';',decimal=',')
+        # pd_j.to_csv(j.callsign+'.csv',sep=';',decimal=',')
 
         track = RANDOM if i.ots == "0" and j.ots == "0" else OTS if i.ots == "1" and i.ots == "1" else MIX
 
@@ -227,13 +230,15 @@ def calc_values_ij(i:Flight, j : Flight, step : int = 1, alt_min = 0, alt_max = 
 
             data = []
 
+            speed_conversion = 0.3048 * 60 / 1852
+
             #  takes a report at every step second.
             for second in range(start, finish + 1, step):
                 # calculate the number of times the iteration is called
                 # calc_values_ij.iterations += 1
 
-                if second == 1754012351:
-                        pass
+                #if second == 1754012351:
+                #       pass
                 
                 total_counts += 1
 
@@ -248,8 +253,8 @@ def calc_values_ij(i:Flight, j : Flight, step : int = 1, alt_min = 0, alt_max = 
                 # get vertical speeds, ft/min, convert to NM/H
                 # TODO can be optimized by calculating the conversion factor once,
                 # since it is always the same
-                vs_i = i.interpolated[second][7] * 0.3048 *60 / 1852
-                vs_j = j.interpolated[second][7] * 0.3048 *60 / 1852
+                vs_i = i.interpolated[second][7] * speed_conversion
+                vs_j = j.interpolated[second][7] * speed_conversion
                 
                 # calculate relative speed components for the pair, all in Knots
                 relative_speeds_pair = calc_relative_speed (gs1 = gs_i, h1 = gt_i, vs1 = vs_i, gs2 = gs_j, h2 = gt_j, vs2 = vs_j)
@@ -303,6 +308,7 @@ def calc_values_ij(i:Flight, j : Flight, step : int = 1, alt_min = 0, alt_max = 
                         prox_time_vert += 1
 
                     term = None
+                    
                     if lateral:
                         term = py0 * Tr/FnT + (Nr*(2*lambda_y)/(abs(relative_speeds_pair[1])*FnT) if abs(relative_speeds_pair[1]) !=0.0 else 0)
                         CRij_lateral_t = Pz0 * term * (lambda_x/Sx) * kinetic_term
@@ -314,7 +320,7 @@ def calc_values_ij(i:Flight, j : Flight, step : int = 1, alt_min = 0, alt_max = 
                                  CRij_t, py0, term, CRij_lateral_t])
 
             data = DataFrame(data, columns = ['Second','Vertical','Lateral','Overlap','KineticTerm','Term2','Pz_t','CRij_t','Py0','Term','CRij_lateral'])
-            data.to_csv('individual.csv',sep=';',decimal=',')
+            #data.to_csv('individual.csv',sep=';',decimal=',')
 
             # determine relative directions of the flights
             direction = OPPOSITE if  opposite_counts >= samedir_counts else SAMEDIR
