@@ -11,9 +11,11 @@ NAVP_2025/
 /*.xls  
 /*.doc
 /*.docx
+/*.csv
 
 # ficheiros especificos
 voo.py
+token.txt
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
