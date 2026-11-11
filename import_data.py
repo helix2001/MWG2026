@@ -193,8 +193,8 @@ def import_flights(filename_csv: str = '', output_obj:str = "", output_res:str='
 
                 f = line['f145_fl']
                 try:
-                    fl = float(f) if (ANSP != CANADA and ANSP != PORTUGAL) else float(f)/100
-                    
+                    fl = float(f/100) if (ANSP == CANADA or ANSP == PORTUGAL) else float(f)
+                    # TODO add handling for normalizing the reported flight level to the assigned flight level
                 except:    
                     fl = None
 
@@ -210,7 +210,7 @@ def import_flights(filename_csv: str = '', output_obj:str = "", output_res:str='
                 # check the diferences in speed
                 gs = line['f160_gndvec_gnd_speed']
                 try:
-                    ground_speed = float(gs)*3600 if ANSP != CANADA else float(gs)
+                    ground_speed = float(gs) if ANSP == CANADA else float(gs)*3600                    
                 except:
                     ground_speed = None
                 

@@ -1,5 +1,6 @@
 import locale
 import csv
+import sys
 from module import *
 from math import sqrt, pi
 from utils import calc_relative_speed
@@ -117,14 +118,18 @@ def calc_py0(f1 : Flight, f2 : Flight) -> float:
         # get the number of bins to interpolate
         min_cte = min(data)[0]
         max_cte = max(data)[0]
-        count = int((max_cte-min_cte) / 0.001)
-        bins = linspace(min_cte,max_cte,count)
-        bins = array(list(zip(bins,bins[1:])))
-        
-        result =  sum(list(map(lambda x : (ecdf (x[1] + WINGSPAN) - ecdf(x[0] - WINGSPAN)) * (ecdf (x[1]) - ecdf (x[0])) , bins)))
 
+        if abs(max_cte-min_cte)>sys.float_info.epsilon:
+            count = int((max_cte-min_cte) / 0.001)
+            bins = linspace(min_cte,max_cte,count)
+            bins = array(list(zip(bins,bins[1:])))                
+            result =  sum(list(map(lambda x : (ecdf (x[1] + WINGSPAN) - ecdf(x[0] - WINGSPAN)) * (ecdf (x[1]) - ecdf (x[0])) , bins)))
+
+        else:
+            result = 1
+    
     except Exception as error:
-        result = 0
+        result = None
         with open('errors.txt','a') as f:
             f.write('ERROR on PY0 calc:{} {} {} {}  {}\n'.format(f1.callsign,f1.actype,f2.callsign,f2.actype,error))
         f.close()
@@ -193,8 +198,8 @@ def calc_values_ij(i:Flight, j : Flight, step : int = 1, alt_min = 0, alt_max = 
         # since we can skip the pair before calculating the relative speeds,
         # which is the most computationally expensive part of the method.
 
-        pd_i = pd.DataFrame(i.interpolated.values(), columns = ['Second','Latitude','Longitude','GroundTrack','GroundSpeed','Altitude','VerticalRate','CTE'])
-        pd_j = pd.DataFrame(j.interpolated.values(), columns = ['Second','Latitude','Longitude','GroundTrack','GroundSpeed','Altitude','VerticalRate','CTE'])
+        # pd_i = pd.DataFrame(i.interpolated.values(), columns = ['Second','Latitude','Longitude','GroundTrack','GroundSpeed','Altitude','VerticalRate','CTE'])
+        # pd_j = pd.DataFrame(j.interpolated.values(), columns = ['Second','Latitude','Longitude','GroundTrack','GroundSpeed','Altitude','VerticalRate','CTE'])
 
         # uncommment to get the interpolated data for each flight as a CSV file
         
@@ -446,15 +451,16 @@ def calc_py0_list(ctes:list, WINGSPAN = 0.03)->tuple[float,float]:
     # get the number of bins to interpolate
     min_cte = min(data)[0]
     max_cte = max(data)[0]
-    count = int((max_cte-min_cte) / 0.001)
-    bins = linspace(min_cte,max_cte,count)
-    bins = array(list(zip(bins,bins[1:])))
-        
-    # show the ecdf
-    # plt.plot(ecdf.x, ecdf.y)
-    # plt.show()
-    py0_same =  sum(list(map(lambda x : (ecdf (x[1] + WINGSPAN) - ecdf(x[0] - WINGSPAN)) * (ecdf (x[1]) - ecdf (x[0])) , bins)))
-    py0_opp =  sum(list(map(lambda x : (ecdf (x[1] - WINGSPAN) - ecdf(x[0] + WINGSPAN)) * (ecdf (x[1]) - ecdf (x[0])) , bins)))
+
+    if abs(max_cte-min_cte)>sys.float_info.epsilon:
+        count = int((max_cte-min_cte) / 0.001)
+        bins = linspace(min_cte,max_cte,count)
+        bins = array(list(zip(bins,bins[1:]))) 
+        py0_same =  sum(list(map(lambda x : (ecdf (x[1] + WINGSPAN) - ecdf(x[0] - WINGSPAN)) * (ecdf (x[1]) - ecdf (x[0])) , bins)))
+        py0_opp =  sum(list(map(lambda x : (ecdf (x[1] - WINGSPAN) - ecdf(x[0] + WINGSPAN)) * (ecdf (x[1]) - ecdf (x[0])) , bins)))
+    else:
+        py0_same = 1
+        py0_opp = 1
                   
     return py0_same, py0_opp
     

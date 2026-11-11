@@ -33,14 +33,12 @@ print('import matplotlib')
 import matplotlib.pyplot as plt
 print('import cartopy')
 import cartopy.crs as ccrs
+from cartopy.io import shapereader
 print('import math')
 from math import comb
 print('import sys')
 import sys
 print ('done imports !')
-
-#   Flag to control whether to draw the map or not
-DRAW_MAP = True
 
 # default report step number of reports
 REPORT_STEP = 5
@@ -63,7 +61,7 @@ FILENAME = DRIVE+'\\'+ SAMPLE_FILENAME
 # This particular file contains only 2 parallel flights, for testing purposes
 
 FILENAME = 'NAVP_LATERAL.csv'
-FILENAME = './data/NAVP_2025-08-01.csv'
+# FILENAME = './data/NAVP_2025-08-01.csv'
 
 # filter contains a list of flight ids to process
 # filter = [1790943,1790923,1790983,1790982, 1790996] 
@@ -168,20 +166,6 @@ if __name__ == '__main__':
     
     pd.DataFrame(flight_csv,columns=columns).to_csv('flights.csv', index=False, sep=';')
 
-    """
-    SHOW_CHART = False
-    if SHOW_CHART and len(filter)<20:
-        m = start_chart_display()
-        for i in filter:
-            # plot_flight_interpolated(usable_flights[i],-1,86399,m)
-            pass
-
-        plot_flight_interpolated(usable_flights[1787844], 1659450829,	1659451224, m)
-        plot_flight_interpolated(usable_flights[1787848], 1659450829,	1659451224, m)
-
-        plt.show()
-    """
-
     print("Calculate total flight time !")
     flights = list(usable_flights.values())
 
@@ -255,19 +239,32 @@ if __name__ == '__main__':
     # """ remove the hashtag to comment out the plotting section if needed
     # FOX process v1.0
     # Plot the routes of all usable flights using Lambert Conformal Conic projection
+
+    #   Flag to control whether to draw the map or not
+    DRAW_MAP = True
     
     if DRAW_MAP:
-        fig = plt.figure(figsize=(10, 6))
+        fig = plt.figure(figsize=(12, 8))
         ax = plt.axes(projection=ccrs.LambertConformal(central_longitude=-30, standard_parallels=(17, 51)))
+        lppo_fir = shapereader.Reader("shp/lppo.shp").geometries()
+        ax.add_geometries(lppo_fir, ccrs.PlateCarree(), facecolor="none",
+                  edgecolor="black", linewidth=1.2, zorder=1)
+        ax.set_extent([-42, -11, 15, 47], crs=ccrs.PlateCarree())
         for flight in flights:
             if flight.interpolated and len(flight.interpolated) > 1:
                 lats = [v[0] for v in flight.interpolated.values()]
                 lons = [v[1] for v in flight.interpolated.values()]
-                ax.plot(lons, lats,  alpha=0.7, transform=ccrs.PlateCarree())
+                route, = ax.plot(lons, lats, alpha=0.7, label=flight.callsign, transform=ccrs.PlateCarree())
+                track = list(flight.interpolated.values())
+                marker = track[len(track) // 2]
+                ax.text(marker[1], marker[0], "✈", color=route.get_color(), fontsize=10,
+                        ha="center", va="center", rotation=90 - marker[3],
+                        rotation_mode="anchor", transform=ccrs.PlateCarree(), zorder=3)
         ax.set_title("Flight Routes (Interpolated) - Lambert Conformal Conic")
-        ax.legend(loc="best", fontsize="medium", ncol=2)
+        ax.legend(loc="upper left", bbox_to_anchor=(1.02, 1), fontsize="medium", ncol=2)
+        
         ax.gridlines(draw_labels=True)
-        plt.tight_layout()
+        plt.tight_layout(rect=(0, 0, 0.78, 1))
         plt.show()
         # """ remove the hashtag to comment out the plotting section if needed
 

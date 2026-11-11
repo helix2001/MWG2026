@@ -365,18 +365,24 @@ class Flight:
             # determine the empirical cumulative distribution function for the CTEs
             data = DataFrame(ctes).to_numpy()
             ecdf = ECDF(data.T[0])
+
+            # print("Data for ECDF calculation:", data)
         
             # get the number of bins to interpolate
             min_cte = min(data)[0]
             max_cte = max(data)[0]
-            count = int((max_cte-min_cte) / 0.001)
-            bins = linspace(min_cte,max_cte,count)
-            bins = array(list(zip(bins,bins[1:])))
+
+            if abs(max_cte - min_cte)> sys.float_info.epsilon:
+                count = int((max_cte-min_cte) / 0.001)
+                bins = linspace(min_cte,max_cte,count)
+                bins = array(list(zip(bins,bins[1:])))
         
-            if same > opp:
-                result = sum(list(map(lambda x : (ecdf (x[1] + WINGSPAN) - ecdf(x[0] - WINGSPAN)) * (ecdf (x[1]) - ecdf (x[0])) , bins)))
+                if same > opp:
+                    result = sum(list(map(lambda x : (ecdf (x[1] + WINGSPAN) - ecdf(x[0] - WINGSPAN)) * (ecdf (x[1]) - ecdf (x[0])) , bins)))
+                else:
+                    result = sum(list(map(lambda x : (ecdf (-1 * x[1] + WINGSPAN) - ecdf(-1 * x[0] - WINGSPAN)) * (ecdf (x[1]) - ecdf (x[0])) , bins)))
             else:
-                result = sum(list(map(lambda x : (ecdf (-1*x[1] + WINGSPAN) - ecdf(-1 * x[0] - WINGSPAN)) * (ecdf (x[1]) - ecdf (x[0])) , bins)))
+                result = 1
 
         except Exception as error:            
             with open('errors.py.txt','a') as f:
@@ -1006,7 +1012,7 @@ class Flight:
                     
                     # flag to indicate if the flights are separated by 1000', will be used for vertical occupancy
                     # one_fl = True if 900 <= dfl <= alt_max_dif else False
-                    one_fl = True if alt_min_dif <= dfl <= alt_max_dif else False
+                    one_fl = True if ALT_THRESHOLD_SAME <= dfl <= ALT_THRESHOLD_1000 else False
                     
                     # Determine if proximate vertical pairs
                     # vertical_pair = False

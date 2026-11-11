@@ -1,24 +1,24 @@
 Item,Value
-Flight count,2.0
-Total flight time (hours),4.91
-Mean flight time (hours),2.4524999999999997
-Mean lambda_x,0.038002159827213826
+Flight count,3.0
+Total flight time (hours),7.6
+Mean flight time (hours),2.532222222222222
+Mean lambda_x,0.038628509719222465
 Mean lambda_y,0.03498920086393088
-Mean lambda_z,0.009603131749460043
-Mean Vxy,463.5346941772809
-Flight count,2.0
-Pair count,1.0
-Time with vertical pairs (Sec),1800.0
+Mean lambda_z,0.009735421166306697
+Mean Vxy,468.6974576953428
+Flight count,3.0
+Pair count,3.0
+Time with vertical pairs (Sec),20822.0
 Time with with lateral pairs (Sec),1800.0
 Time with overlapping pairs (Sec),0.0
-Mean absolute dVx,927.2737981764143
-Mean absolute dVy,2.803246458192452
+Mean absolute dVx,644.2444523279586
+Mean absolute dVy,1.5281522776682266
 Mean absolute dVz,0.0
 CR Overlap,0.0
-CR Vertical,0.0
-CR Lateral,6.814932303538968e-10
-Vertical occupancy,0.1019367991845056
-Lateral occupancy,0.1019367991845056
-Occupancy,0.2038735983690112
+CR Vertical,1.6703600475742708e-07
+CR Lateral,1.5944266685909296e-07
+Vertical occupancy,0.3806859733801375
+Lateral occupancy,0.03290917068889864
+Occupancy,0.41359514406903614
 Horizontal overlap,0.0
-Py0,0.0
+Py0,1.0
